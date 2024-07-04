@@ -1,4 +1,4 @@
-#include <Arduino.h>
+#include <Arduino.h> // auskommentieren, für Arduino IDE
 #include <TFT_eSPI.h>
 #include <WiFi.h>
 #include <PubSubClient.h>

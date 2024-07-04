@@ -10,6 +10,12 @@ Der Quellcode und große Teile dieses Textes sind mit künstlicher Intelligenz e
 - evtl sollte der beliebte WiFi Manager von tzapu integriert werden, dann könnte ich ein vorkompiliertes binary zur Verfügung stellen, wenn WiFi und MQTT Server on the fly editiert werden können.
 - Besser Dokumentation (Offset kann und sollte per MQTT gesetzt werden).
 - Sinnvolle Funktion für den zweiten Button.
+- Das Farbdisplay besser nutzen.
+
+## Benutzung
+Am einfachsten kann das Script mit VSCODE / PlatformIO genutzt werden. Dort einfach das Projekt importieren, WiFi und MQTT Angaben ergänzen und auf ein TTGO T-Display schreiben.
+
+Eine Kompilierung mit der Arduino IDE ist auch möglich. hierzu muss die erste Zeile auskommentiert werden ("#include <Arduino.h>") und das Script in Gaszaehler.ino umbenannt werden.
 
 ### Hauptfunktionen:
 Erfassung von Impulsen eines Reed-Schalter-Sensors am Gaszähler Anzeige der Gasverbrauchsdaten auf dem integrierten TFT-Bildschirm Veröffentlichung von Gasverbrauchsmetriken an einen MQTT-Broker Konfigurierbare WLAN- und MQTT-Einstellungen über WiFiManager Dauerhafte Speicherung von Zählerdaten mittels SPIFFS Tastenbedienung für verschiedene Anzeigemodi und Konfiguration
