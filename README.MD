@@ -8,10 +8,10 @@ Der Quellcode und große Teile dieses Textes sind mit künstlicher Intelligenz e
 # TODO:
 - Mommentan funktioniert das Script nur, wenn WiFi und MQTT verbunden sind. Beides sollte sinnvollerweise optional sein.
 - evtl sollte der beliebte WiFi Manager von tzapu integriert werden, dann könnte ich ein vorkompiliertes binary zur Verfügung stellen, wenn WiFi und MQTT Server on the fly editiert werden können.
-- Besser Dokumentation (Offset kann und sollte per MQTT gesetzt werden).
+- Bessere Dokumentation (Offset kann und sollte per MQTT gesetzt werden).
 - Sinnvolle Funktion für den zweiten Button.
 - Das Farbdisplay nutzen.
-- Mehr sinnvolle Ausgaben aud dem Display
+- Mehr sinnvolle Ausgaben auf dem Display
 - Skript für Zähler mit 1000 Impulsen je m³-Gas anpassen
 
 ## Benutzung
