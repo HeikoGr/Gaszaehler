@@ -22,6 +22,9 @@ Erfassung von Impulsen eines Reed-Schalter-Sensors am Gaszähler Anzeige der Gas
 
 ### MQTT und WiFiManager
 Das Projekt nutzt MQTT zur Veröffentlichung von Gasverbrauchsdaten und WiFiManager für eine einfache WLAN-Konfiguration. MQTT ermöglicht die Echtzeitübertragung von Daten an einen Broker, was eine Fernüberwachung des Gasverbrauchs ermöglicht. WiFiManager bietet eine benutzerfreundliche Weboberfläche zur Einrichtung von WLAN-Zugangsdaten und MQTT-Parametern ohne Hardcodierung.
+Das Skript speichert lediglich die entdeckten Impulse. Der aktuelle Zöhlerstand wird durch einen Offset gebildet. 
+
+Der Offset selbst wird gebildet, indem per MQTT den aktuellen Stand des zu überwachenden Gaszählers publiziert (mit PUNKT als Tausendertrennzeichen).
 
 ### SPIFFS-Speicher
 SPIFFS (SPI Flash File System) wird verwendet, um kritische Daten wie den Impulszähler dauerhaft im Flash-Speicher des ESP32 zu speichern. Dies gewährleistet, dass der Gaszählerstand auch bei Stromausfall oder Geräteneustart erhalten bleibt.
@@ -42,3 +45,6 @@ Durch diese Techniken kann der Gaszähler präzise Messungen durchführen und zu
 ## WiFi-Konfiguration
 1. Kopiere `wifi_credentials_template.h` zu `wifi_credentials.h`
 2. Öffne `wifi_credentials.h` und gib deine WiFi-Zugangsdaten und deinen MQTT Server ein.
+
+## Alternativen
+https://github.com/StefanStrobel/ArduCounter/ zählt an mehr als einem PIN, unterstützt auch das Display und ist stark mit FHEM (fhem.de) verknüpft. Leider keine Unterstützung für MQTT.

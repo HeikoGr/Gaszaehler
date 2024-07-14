@@ -4,6 +4,8 @@
 #include <PubSubClient.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
+#include <sstream>
+#include <iomanip>
 
 // ENTWEDER:
 #include "credentials.h"
@@ -15,20 +17,20 @@
 
 // MQTT topics
 const char *mqtt_topic_gas = "gas_meter/volume";
-const char *mqtt_topic_offset = "gas_meter/offset";
+const char *mqtt_topic_currentVal = "gas_meter/currentVal";
 
 // Pin-Definitionen
 #define REED_PIN 32 // ADC1 Pin
 #define BUTTON_1 35
 #define BUTTON_2 0
-#define DEBOUNCE_DELAY 250
-#define HYSTERESIS_LOW 500.0   // 30% von VCC
-#define HYSTERESIS_HIGH 4000.0 // 70% von VCC
+#define DEBOUNCE_DELAY 50
+#define HYSTERESIS_LOW 500.0
+#define HYSTERESIS_HIGH 4000.0
 
 // Variablen
-volatile unsigned long pulseCount = 0;
-float gasVolume = 0.0;
-float offset = 0.0;
+volatile uint32_t pulseCount = 0;
+uint32_t gasVolume = 0;
+uint32_t offset = 0;
 int displayMode = 0;
 volatile bool lastState = false;
 
@@ -43,9 +45,9 @@ unsigned long lastInterruptTime = 0;
 
 // Intervalle
 const unsigned long publishInterval = 60000;      // 60 Sekunden
-const unsigned long InterruptInterval = 250;      // 60 Sekunden
+const unsigned long InterruptInterval = 50;       // 50 Millisekunden
 const unsigned long displayUpdateInterval = 1000; // 1 Sekunde
-const unsigned long buttonCheckInterval = 50;     // 50 Millisekunden
+const unsigned long buttonCheckInterval = 100;    // 100 Millisekunden
 const unsigned long saveInterval = 60000;         // 60 Sekunden
 
 // Display
@@ -59,6 +61,15 @@ PubSubClient client(espClient);
 unsigned long prevPulseCount = 0;
 float prevGasVolume = -1.0;
 float prevOffset = -1.0;
+
+// Funktion zur Formatierung von uint16_t mit Tausendertrennzeichen
+String formatWithHundredsSeparator(uint32_t value)
+{
+  std::ostringstream oss;
+  oss.imbue(std::locale(""));
+  oss << std::fixed << std::setprecision(2) << (value / 100.0);
+  return String(oss.str().c_str());
+}
 
 // Funktion zum Speichern des Zählerstands in SPIFFS
 void saveCountToSPIFFS()
@@ -148,9 +159,10 @@ void updateDisplay()
   switch (displayMode)
   {
   case 0:
-    tft.printf("Gas: %.3f m3", gasVolume);
+    gasVolume = pulseCount + offset;
+    tft.printf("Gas: %s m3", formatWithHundredsSeparator(gasVolume).c_str());
     tft.setCursor(0, 30);
-    tft.printf("Offset: %.3f m3", offset);
+    tft.printf("Offset: %s m3", formatWithHundredsSeparator(offset).c_str());
     break;
   case 1:
     tft.printf("WiFi: %s", WiFi.status() == WL_CONNECTED ? "Verbunden" : "Getrennt");
@@ -164,18 +176,6 @@ void updateDisplay()
     tft.setCursor(0, 30);
     tft.printf("IP: %s", mqtt_server);
     break;
-  }
-}
-
-// Funktion zur Aktualisierung des Displays, falls sich Werte geändert haben
-void updateDisplayIfChanged()
-{
-  gasVolume = pulseCount / 1000.0 + offset;
-  if (gasVolume != prevGasVolume || offset != prevOffset)
-  {
-    updateDisplay();
-    prevGasVolume = gasVolume;
-    prevOffset = offset;
   }
 }
 
@@ -197,7 +197,7 @@ void handleButtons()
   {
     if (currentMillis - lastButton2PressTime > DEBOUNCE_DELAY)
     {
-      // pulseCount = 0; 
+      // pulseCount = 0;
       saveCountToSPIFFS();
       updateDisplay();
       lastButton2PressTime = currentMillis;
@@ -242,10 +242,17 @@ void callback(char *topic, byte *payload, unsigned int length)
     message += (char)payload[i];
   }
 
-  if (String(topic) == mqtt_topic_offset)
-  {
-    offset = message.toFloat();
-    Serial.printf("Neuer Offset-Wert empfangen: %.3f m3\n", offset);
+  if (String(topic) == mqtt_topic_currentVal)
+  { 
+    pulseCount = 0;
+    saveCountToSPIFFS();
+    updateDisplay();
+    
+    offset = static_cast<uint16_t>(message.toFloat() * 100);
+    Serial.printf("Zählerstand empfangen: %s m3\n", message.c_str());
+    Serial.printf("Offset errechnet: %s m3\n", formatWithHundredsSeparator(offset).c_str());
+    updateDisplay();
+    publishGasVolume();
     saveOffsetToSPIFFS();
   }
 }
@@ -259,7 +266,7 @@ void reconnect()
     if (client.connect("ESP32Client"))
     {
       Serial.println("verbunden");
-      client.subscribe(mqtt_topic_offset);
+      client.subscribe(mqtt_topic_currentVal);
     }
     else
     {
@@ -309,7 +316,8 @@ void setup()
   client.setCallback(callback);
 
   // Initialen Gasvolumenwert setzen
-  gasVolume = pulseCount / 1000.0 + offset;
+
+  updateDisplay();
 
   Serial.println("Setup abgeschlossen.");
 }
@@ -327,7 +335,7 @@ void loop()
   client.loop();
 
   // Reed-Kontakt analog lesen und Hysterese anwenden
-  float voltage = analogRead(REED_PIN); // Angenommen 3.3V VCC
+  float voltage = analogRead(REED_PIN);
   if (currentMillis - lastInterruptTime >= InterruptInterval)
   {
     lastInterruptTime = millis();
@@ -337,8 +345,11 @@ void loop()
     }
     else if (!lastState && voltage > HYSTERESIS_HIGH)
     {
+      Serial.printf("Impuls registriert.\n");
       lastState = true;
       pulseCount++;
+
+      updateDisplay();
     }
   }
 
@@ -347,13 +358,6 @@ void loop()
   {
     publishGasVolume();
     lastPublishTime = currentMillis;
-  }
-
-  // Display-Aktualisierung
-  if (currentMillis - lastDisplayUpdateTime >= displayUpdateInterval)
-  {
-    updateDisplayIfChanged();
-    lastDisplayUpdateTime = currentMillis;
   }
 
   // Button-Überprüfung
