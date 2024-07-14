@@ -23,7 +23,7 @@ const char *mqtt_topic_currentVal = "gas_meter/currentVal";
 #define REED_PIN 32 // ADC1 Pin
 #define BUTTON_1 35
 #define BUTTON_2 0
-#define DEBOUNCE_DELAY 50
+#define DEBOUNCE_DELAY 300
 #define HYSTERESIS_LOW 500.0
 #define HYSTERESIS_HIGH 4000.0
 
@@ -42,13 +42,17 @@ unsigned long lastSaveTime = 0;
 unsigned long lastButton1PressTime = 0;
 unsigned long lastButton2PressTime = 0;
 unsigned long lastInterruptTime = 0;
+unsigned long lastMQTTreconnectTime = 0;
+unsigned long lastWiFireconnectTime = 0;
 
 // Intervalle
-const unsigned long publishInterval = 60000;      // 60 Sekunden
-const unsigned long InterruptInterval = 50;       // 50 Millisekunden
-const unsigned long displayUpdateInterval = 1000; // 1 Sekunde
-const unsigned long buttonCheckInterval = 100;    // 100 Millisekunden
-const unsigned long saveInterval = 60000;         // 60 Sekunden
+const unsigned long publishInterval = 60000;        // 60 Sekunden
+const unsigned long InterruptInterval = 50;         // 50 Millisekunden
+const unsigned long displayUpdateInterval = 1000;   // 1 Sekunde
+const unsigned long buttonCheckInterval = 100;      // 100 Millisekunden
+const unsigned long saveInterval = 60000;           // 60 Sekunden
+const unsigned long MQTTreconnectIntervall = 200000; // 20 Minuten
+const unsigned long WiFireconnectIntervall = 200000; // 20 Minuten
 
 // Display
 TFT_eSPI tft = TFT_eSPI();
@@ -144,7 +148,7 @@ void loadOffsetFromSPIFFS()
       {
         offset = doc["offset"];
         prevOffset = offset;
-        Serial.printf("Offset geladen: %s m3", formatWithHundredsSeparator(offset).c_str());
+        Serial.printf("Offset geladen: %s m3\n", formatWithHundredsSeparator(offset).c_str());
       }
       file.close();
     }
@@ -182,10 +186,17 @@ void updateDisplay()
 // Funktion zur Veröffentlichung des Gasvolumens über MQTT
 void publishGasVolume()
 {
-  char msg[50];
-  snprintf(msg, 50, "%s", formatWithHundredsSeparator(gasVolume).c_str());
-  client.publish(mqtt_topic_gas, msg);
-  Serial.printf("Gasvolumen veröffentlicht: %s m3\n", formatWithHundredsSeparator(gasVolume));
+  if (client.connected())
+  {
+    char msg[50];
+    snprintf(msg, 50, "%s", formatWithHundredsSeparator(gasVolume).c_str());
+    client.publish(mqtt_topic_gas, msg);
+    Serial.printf("Gasvolumen veröffentlicht: %s m3\n", formatWithHundredsSeparator(gasVolume));
+  }
+  else
+  {
+    Serial.printf("Veröffentlichen nicht möglich! MQTT nicht verbunden.\n");
+  }
 }
 
 // Funktion zur Behandlung der Tasten
@@ -224,15 +235,26 @@ void setup_wifi()
   Serial.print("Verbinde mit ");
   Serial.println(ssid);
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
+
+  unsigned long startAttemptTime = millis();
+
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000)
   {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("");
-  Serial.println("WiFi verbunden");
-  Serial.println("IP-Adresse: ");
-  Serial.println(WiFi.localIP());
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    Serial.println("");
+    Serial.println("WiFi verbunden");
+    Serial.println("IP-Adresse: ");
+    Serial.println(WiFi.localIP());
+  }
+  else
+  {
+    Serial.println("WiFi-Verbindung fehlgeschlagen");
+  }
 }
 
 // Callback-Funktion für MQTT-Nachrichten
@@ -245,15 +267,14 @@ void callback(char *topic, byte *payload, unsigned int length)
   }
 
   if (String(topic) == mqtt_topic_currentVal)
-  { 
-    pulseCount = 0;
-    saveCountToSPIFFS();
-    updateDisplay();
-    
+  {
     offset = static_cast<uint32_t>(message.toFloat() * 100);
     Serial.printf("Zählerstand empfangen: %s m3\n", message.c_str());
     Serial.printf("Offset errechnet: %s m3\n", formatWithHundredsSeparator(offset).c_str());
+
+    pulseCount = 0;
     updateDisplay();
+    saveCountToSPIFFS();
     publishGasVolume();
     saveOffsetToSPIFFS();
   }
@@ -262,30 +283,24 @@ void callback(char *topic, byte *payload, unsigned int length)
 // Funktion zur Wiederverbindung mit dem MQTT-Broker
 void reconnect()
 {
-  while (!client.connected())
+  Serial.print("Versuche MQTT-Verbindung...\n");
+
+  // Abrufen der individuellen Chip-ID des ESP32
+  String chipId = String((uint32_t)ESP.getEfuseMac(), HEX);
+  chipId.toUpperCase();
+
+  // Aufbau des Client-Namens mit der Chip-ID
+  String clientId = "Gaszaehler_" + chipId;
+
+  if (client.connect(clientId.c_str()))
   {
-    Serial.print("Versuche MQTT-Verbindung...");
-
-    // Abrufen der individuellen Chip-ID des ESP32
-    String chipId = String((uint32_t)ESP.getEfuseMac(), HEX);
-    chipId.toUpperCase(); // Optional: Umwandlung in Großbuchstaben für Konsistenz
-    
-    // Aufbau des Client-Namens mit der Chip-ID
-    String clientId = "Gaszaehler_" + chipId;
-
-    if (client.connect(clientId.c_str()))
-    {
-      Serial.println("verbunden");
-      client.subscribe(mqtt_topic_currentVal);
-      publishGasVolume();
-    }
-    else
-    {
-      Serial.print("fehlgeschlagen, rc=");
-      Serial.print(client.state());
-      Serial.println(" Versuche es in 5 Sekunden erneut");
-      delay(5000);
-    }
+    Serial.println("verbunden");
+    client.subscribe(mqtt_topic_currentVal);
+    publishGasVolume();
+  }
+  else
+  {
+    Serial.println("Verbindung zu MQTT-Server fehlgeschlagen.");
   }
 }
 
@@ -321,6 +336,7 @@ void setup()
 
   // Mit WiFi verbinden
   setup_wifi();
+  reconnect();
 
   // MQTT-Client einrichten
   client.setServer(mqtt_server, 1883);
@@ -339,11 +355,21 @@ void loop()
   unsigned long currentMillis = millis();
 
   // MQTT-Verbindung prüfen
-  if (!client.connected())
+  if (!client.connected() && currentMillis - lastMQTTreconnectTime >= MQTTreconnectIntervall)
   {
+    lastMQTTreconnectTime = millis();
     reconnect();
   }
+
+  // MQTT loop()-Funktion
   client.loop();
+
+  // WiFi-Verbindung prüfen
+  if (WiFi.status() != WL_CONNECTED && currentMillis - lastWiFireconnectTime >= WiFireconnectIntervall)
+  {
+    lastWiFireconnectTime = millis();
+    setup_wifi();
+  }
 
   // Reed-Kontakt analog lesen und Hysterese anwenden
   float voltage = analogRead(REED_PIN);
