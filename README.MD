@@ -27,9 +27,9 @@ Eine Kompilierung mit der Arduino IDE ist auch möglich. hierzu muss die erste Z
 - Dauerhafte Speicherung von Zählerdaten mittels SPIFFS 
 - Tastenbedienung für verschiedene Anzeigemodi und Konfiguration
 
-### MQTT und WiFiManager
-Das Projekt nutzt MQTT zur Veröffentlichung von Gasverbrauchsdaten und WiFiManager für eine einfache WLAN-Konfiguration. MQTT ermöglicht die Echtzeitübertragung von Daten an einen Broker, was eine Fernüberwachung des Gasverbrauchs ermöglicht. WiFiManager bietet eine benutzerfreundliche Weboberfläche zur Einrichtung von WLAN-Zugangsdaten und MQTT-Parametern ohne Hardcodierung.
-Das Skript speichert lediglich die entdeckten Impulse. Der aktuelle Zöhlerstand wird durch einen Offset gebildet. 
+### MQTT
+Das Projekt nutzt MQTT zur Veröffentlichung von Gasverbrauchsdaten. 
+Das Skript erfasst lediglich die entdeckten Impulse. Der aktuelle Zählerstand wird durch einen Offset errechnet. 
 
 Der Offset selbst wird gebildet, indem per MQTT den aktuellen Stand des zu überwachenden Gaszählers publiziert (mit PUNKT als Tausendertrennzeichen).
 
