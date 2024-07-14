@@ -1,5 +1,5 @@
 ## Überblick des Gaszähler-Projekts
-Das TTGO-T ESP32-Board mit integriertem Display kann für einen intelligenten Gaszähler verwendet werden, der Impulse von einem Reed-Schalter zählt und die Daten über MQTT veröffentlicht. Dieses Projekt kombiniert Hardware-Schnittstellen, drahtlose Konnektivität und Datenprotokollierung zu einer IoT-Lösung für die Gasverbrauchsüberwachung.
+Das TTGO-T ESP32-Board mit integriertem Display kann für einen Standard Balken-Gaszähler (BK-G4) verwendet werden, der Impulse von einem Reed-Schalter zählt und die Daten über MQTT veröffentlicht. Dieses Projekt kombiniert Hardware-Schnittstellen, drahtlose Konnektivität und Datenprotokollierung zu einer IoT-Lösung für die Gasverbrauchsüberwachung.
 
 Grundlage für dieses Projekt ist das 3d gedruckte Gehäuse von 3dFabrik von hier https://www.thingiverse.com/thing:5594161
 
@@ -10,7 +10,9 @@ Der Quellcode und große Teile dieses Textes sind mit künstlicher Intelligenz e
 - evtl sollte der beliebte WiFi Manager von tzapu integriert werden, dann könnte ich ein vorkompiliertes binary zur Verfügung stellen, wenn WiFi und MQTT Server on the fly editiert werden können.
 - Besser Dokumentation (Offset kann und sollte per MQTT gesetzt werden).
 - Sinnvolle Funktion für den zweiten Button.
-- Das Farbdisplay besser nutzen.
+- Das Farbdisplay nutzen.
+- Mehr sinnvolle Ausgaben aud dem Display
+- Skript für Zähler mit 1000 Impulsen je m³-Gas anpassen
 
 ## Benutzung
 Am einfachsten kann das Script mit VSCODE / PlatformIO genutzt werden. Dort einfach das Projekt importieren, WiFi und MQTT Angaben ergänzen und auf ein TTGO T-Display schreiben.
@@ -18,7 +20,12 @@ Am einfachsten kann das Script mit VSCODE / PlatformIO genutzt werden. Dort einf
 Eine Kompilierung mit der Arduino IDE ist auch möglich. hierzu muss die erste Zeile auskommentiert werden ("#include <Arduino.h>") und das Script in Gaszaehler.ino umbenannt werden.
 
 ### Hauptfunktionen:
-Erfassung von Impulsen eines Reed-Schalter-Sensors am Gaszähler Anzeige der Gasverbrauchsdaten auf dem integrierten TFT-Bildschirm Veröffentlichung von Gasverbrauchsmetriken an einen MQTT-Broker Konfigurierbare WLAN- und MQTT-Einstellungen über WiFiManager Dauerhafte Speicherung von Zählerdaten mittels SPIFFS Tastenbedienung für verschiedene Anzeigemodi und Konfiguration
+- Erfassung von Impulsen eines Reed-Schalter-Sensors am Gaszähler 
+- Anzeige der Gasverbrauchsdaten auf dem integrierten TFT-Bildschirm 
+- Veröffentlichung von Gasverbrauchsmetriken an einen MQTT-Broker
+- Konfigurierbare WLAN- und MQTT-Einstellungen 
+- Dauerhafte Speicherung von Zählerdaten mittels SPIFFS 
+- Tastenbedienung für verschiedene Anzeigemodi und Konfiguration
 
 ### MQTT und WiFiManager
 Das Projekt nutzt MQTT zur Veröffentlichung von Gasverbrauchsdaten und WiFiManager für eine einfache WLAN-Konfiguration. MQTT ermöglicht die Echtzeitübertragung von Daten an einen Broker, was eine Fernüberwachung des Gasverbrauchs ermöglicht. WiFiManager bietet eine benutzerfreundliche Weboberfläche zur Einrichtung von WLAN-Zugangsdaten und MQTT-Parametern ohne Hardcodierung.
@@ -30,9 +37,9 @@ Der Offset selbst wird gebildet, indem per MQTT den aktuellen Stand des zu über
 SPIFFS (SPI Flash File System) wird verwendet, um kritische Daten wie den Impulszähler dauerhaft im Flash-Speicher des ESP32 zu speichern. Dies gewährleistet, dass der Gaszählerstand auch bei Stromausfall oder Geräteneustart erhalten bleibt.
 
 ## Implementierungsdetails:
-Speichern und Laden des Zählerstands aus einer JSON-Datei in SPIFFS
-Schreibvorgänge nur bei Wertänderungen zur Minimierung des Flash-Verschleißes
-Möglichkeit zur Speicherung von Konfigurationseinstellungen für einfache Updates
+- Speichern und Laden des Zählerstands aus einer JSON-Datei in SPIFFS
+- Schreibvorgänge nur bei Wertänderungen zur Minimierung des Flash-Verschleißes
+- Möglichkeit zur Speicherung von Konfigurationseinstellungen für einfache Updates
 
 ### Hysterese und Entprellung
 Die Implementierung von Hysterese und Entprellung ist entscheidend für eine genaue Impulszählung vom Reed-Schalter.
