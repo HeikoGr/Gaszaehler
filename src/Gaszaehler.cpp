@@ -62,7 +62,7 @@ unsigned long prevPulseCount = 0;
 float prevGasVolume = -1.0;
 float prevOffset = -1.0;
 
-// Funktion zur Formatierung von uint16_t mit Tausendertrennzeichen
+// Funktion zur Formatierung von uint32_t mit Tausendertrennzeichen
 String formatWithHundredsSeparator(uint32_t value)
 {
   std::ostringstream oss;
@@ -122,7 +122,7 @@ void loadCountFromSPIFFS()
       {
         pulseCount = doc["count"];
         prevPulseCount = pulseCount;
-        Serial.printf("Zählerstand geladen: %.3i\n", pulseCount);
+        Serial.printf("Impulse geladen: %i\n", pulseCount);
       }
       file.close();
     }
@@ -144,7 +144,7 @@ void loadOffsetFromSPIFFS()
       {
         offset = doc["offset"];
         prevOffset = offset;
-        Serial.printf("Offset geladen: %.3f\n", offset);
+        Serial.printf("Offset geladen: %s m3", formatWithHundredsSeparator(offset).c_str());
       }
       file.close();
     }
@@ -179,6 +179,15 @@ void updateDisplay()
   }
 }
 
+// Funktion zur Veröffentlichung des Gasvolumens über MQTT
+void publishGasVolume()
+{
+  char msg[50];
+  snprintf(msg, 50, "%s", formatWithHundredsSeparator(gasVolume).c_str());
+  client.publish(mqtt_topic_gas, msg);
+  Serial.printf("Gasvolumen veröffentlicht: %s m3\n", formatWithHundredsSeparator(gasVolume));
+}
+
 // Funktion zur Behandlung der Tasten
 void handleButtons()
 {
@@ -199,19 +208,12 @@ void handleButtons()
     {
       // pulseCount = 0;
       saveCountToSPIFFS();
+      saveOffsetToSPIFFS();
+      publishGasVolume();
       updateDisplay();
       lastButton2PressTime = currentMillis;
     }
   }
-}
-
-// Funktion zur Veröffentlichung des Gasvolumens über MQTT
-void publishGasVolume()
-{
-  char msg[50];
-  snprintf(msg, 50, "%.3f", gasVolume);
-  client.publish(mqtt_topic_gas, msg);
-  Serial.printf("Gasvolumen veröffentlicht: %.3f m3\n", gasVolume);
 }
 
 // Funktion zur Einrichtung der WiFi-Verbindung
@@ -248,7 +250,7 @@ void callback(char *topic, byte *payload, unsigned int length)
     saveCountToSPIFFS();
     updateDisplay();
     
-    offset = static_cast<uint16_t>(message.toFloat() * 100);
+    offset = static_cast<uint32_t>(message.toFloat() * 100);
     Serial.printf("Zählerstand empfangen: %s m3\n", message.c_str());
     Serial.printf("Offset errechnet: %s m3\n", formatWithHundredsSeparator(offset).c_str());
     updateDisplay();
@@ -263,10 +265,19 @@ void reconnect()
   while (!client.connected())
   {
     Serial.print("Versuche MQTT-Verbindung...");
-    if (client.connect("ESP32Client"))
+
+    // Abrufen der individuellen Chip-ID des ESP32
+    String chipId = String((uint32_t)ESP.getEfuseMac(), HEX);
+    chipId.toUpperCase(); // Optional: Umwandlung in Großbuchstaben für Konsistenz
+    
+    // Aufbau des Client-Namens mit der Chip-ID
+    String clientId = "Gaszaehler_" + chipId;
+
+    if (client.connect(clientId.c_str()))
     {
       Serial.println("verbunden");
       client.subscribe(mqtt_topic_currentVal);
+      publishGasVolume();
     }
     else
     {
