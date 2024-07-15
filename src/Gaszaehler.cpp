@@ -1,21 +1,12 @@
 #include <Arduino.h> // auskommentieren, für Arduino IDE
 #include <TFT_eSPI.h>
-#include <WiFi.h>
+#include <WiFiManager.h>
 #include <PubSubClient.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
 #include <sstream>
 #include <iomanip>
 
-// ENTWEDER:
-#include "credentials.h"
-
-// ODER: WiFi-Zugangsdaten
-// const char* ssid = "ssid";
-// const char* password = "password";
-// const char *mqtt_server = "192.168.1.99";
-
-// MQTT topics
 const char *mqtt_topic_gas = "gas_meter/volume";
 const char *mqtt_topic_currentVal = "gas_meter/currentVal";
 
@@ -36,7 +27,6 @@ volatile bool lastState = false;
 
 // Zeitvariablen
 unsigned long lastPublishTime = 0;
-unsigned long lastDisplayUpdateTime = 0;
 unsigned long lastButtonCheckTime = 0;
 unsigned long lastSaveTime = 0;
 unsigned long lastButton1PressTime = 0;
@@ -48,16 +38,22 @@ unsigned long lastWiFireconnectTime = 0;
 // Intervalle
 const unsigned long publishInterval = 60000;        // 60 Sekunden
 const unsigned long InterruptInterval = 50;         // 50 Millisekunden
-const unsigned long displayUpdateInterval = 1000;   // 1 Sekunde
 const unsigned long buttonCheckInterval = 100;      // 100 Millisekunden
 const unsigned long saveInterval = 60000;           // 60 Sekunden
-const unsigned long MQTTreconnectIntervall = 200000; // 20 Minuten
-const unsigned long WiFireconnectIntervall = 200000; // 20 Minuten
+const unsigned long MQTTreconnectIntervall = 10000; // 240 Sekunden
+const unsigned long WiFireconnectIntervall = 10000; // 240 Sekunden
 
 // Display
 TFT_eSPI tft = TFT_eSPI();
 
 // WiFi- und MQTT-Clients
+
+char mqtt_server[40] = "192.168.0.1";
+char mqtt_port[6] = "1883";
+
+WiFiManager wm;
+WiFiManagerParameter custom_mqtt_server("server", "mqtt server", mqtt_server, 40);
+WiFiManagerParameter custom_mqtt_port("port", "mqtt port", mqtt_port, 6);
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -167,6 +163,10 @@ void updateDisplay()
     tft.printf("Gas: %s m3", formatWithHundredsSeparator(gasVolume).c_str());
     tft.setCursor(0, 30);
     tft.printf("Offset: %s m3", formatWithHundredsSeparator(offset).c_str());
+    tft.setCursor(0, 60);
+    tft.printf("Impulse: %i", pulseCount);
+    tft.setCursor(0, 110);
+    tft.print("    publish & save >");
     break;
   case 1:
     tft.printf("WiFi: %s", WiFi.status() == WL_CONNECTED ? "Verbunden" : "Getrennt");
@@ -174,11 +174,13 @@ void updateDisplay()
     tft.printf("SSID: %s", WiFi.SSID().c_str());
     tft.setCursor(0, 60);
     tft.printf("IP: %s", WiFi.localIP().toString().c_str());
+    tft.setCursor(0, 110);
+    tft.print(" reset wifi & mqtt >");
     break;
   case 2:
     tft.printf("MQTT: %s", client.connected() ? "Verbunden" : "Getrennt");
     tft.setCursor(0, 30);
-    tft.printf("IP: %s", mqtt_server);
+    tft.printf("IP: %s", custom_mqtt_server.getValue());
     break;
   }
 }
@@ -199,89 +201,8 @@ void publishGasVolume()
   }
 }
 
-// Funktion zur Behandlung der Tasten
-void handleButtons()
-{
-  unsigned long currentMillis = millis();
-
-  if (digitalRead(BUTTON_1) == LOW)
-  {
-    if (currentMillis - lastButton1PressTime > DEBOUNCE_DELAY)
-    {
-      displayMode = (displayMode + 1) % 3;
-      updateDisplay();
-      lastButton1PressTime = currentMillis;
-    }
-  }
-  if (digitalRead(BUTTON_2) == LOW)
-  {
-    if (currentMillis - lastButton2PressTime > DEBOUNCE_DELAY)
-    {
-      // pulseCount = 0;
-      saveCountToSPIFFS();
-      saveOffsetToSPIFFS();
-      publishGasVolume();
-      updateDisplay();
-      lastButton2PressTime = currentMillis;
-    }
-  }
-}
-
-// Funktion zur Einrichtung der WiFi-Verbindung
-void setup_wifi()
-{
-  delay(10);
-  Serial.println();
-  Serial.print("Verbinde mit ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
-
-  unsigned long startAttemptTime = millis();
-
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    Serial.println("");
-    Serial.println("WiFi verbunden");
-    Serial.println("IP-Adresse: ");
-    Serial.println(WiFi.localIP());
-  }
-  else
-  {
-    Serial.println("WiFi-Verbindung fehlgeschlagen");
-  }
-}
-
-// Callback-Funktion für MQTT-Nachrichten
-void callback(char *topic, byte *payload, unsigned int length)
-{
-  String message;
-  for (unsigned int i = 0; i < length; i++)
-  {
-    message += (char)payload[i];
-  }
-
-  if (String(topic) == mqtt_topic_currentVal)
-  {
-    offset = static_cast<uint32_t>(message.toFloat() * 100);
-    Serial.printf("Zählerstand empfangen: %s m3\n", message.c_str());
-    Serial.printf("Offset errechnet: %s m3\n", formatWithHundredsSeparator(offset).c_str());
-
-    pulseCount = 0;
-    updateDisplay();
-    saveCountToSPIFFS();
-    publishGasVolume();
-    saveOffsetToSPIFFS();
-  }
-}
-
 // Funktion zur Wiederverbindung mit dem MQTT-Broker
-void reconnect()
+void setup_mqtt()
 {
   Serial.print("Versuche MQTT-Verbindung...\n");
 
@@ -304,11 +225,100 @@ void reconnect()
   }
 }
 
+// Funktion zur Behandlung der Tasten
+void handleButtons()
+{
+  unsigned long currentMillis = millis();
+
+  if (digitalRead(BUTTON_1) == LOW)
+  {
+    if (currentMillis - lastButton1PressTime > DEBOUNCE_DELAY)
+    {
+      displayMode = (displayMode + 1) % 3;
+      updateDisplay();
+      lastButton1PressTime = currentMillis;
+    }
+  }
+  if (digitalRead(BUTTON_2) == LOW)
+  {
+    if (currentMillis - lastButton2PressTime > DEBOUNCE_DELAY)
+    {
+      if (displayMode == 0)
+      {
+        saveCountToSPIFFS();
+        saveOffsetToSPIFFS();
+        publishGasVolume();
+        updateDisplay();
+      }
+      if (displayMode == 1)
+      {
+        saveCountToSPIFFS();
+        saveOffsetToSPIFFS();
+        publishGasVolume();
+        updateDisplay();
+        wm.resetSettings();
+        delay(20);
+        ESP.restart();
+      }
+
+      lastButton2PressTime = currentMillis;
+    }
+  }
+}
+
+// Callback-Funktion für MQTT-Nachrichten
+void callback(char *topic, byte *payload, unsigned int length)
+{
+  String message;
+  for (unsigned int i = 0; i < length; i++)
+  {
+    message += (char)payload[i];
+  }
+
+  if (String(topic) == mqtt_topic_currentVal)
+  {
+    offset = static_cast<uint32_t>(message.toFloat() * 100);
+    Serial.printf("Zählerstand empfangen: %s m3\n", message.c_str());
+    Serial.printf("Offset errechnet: %s m3\n", formatWithHundredsSeparator(offset).c_str());
+
+    pulseCount = 0;
+
+    updateDisplay();
+    saveCountToSPIFFS();
+    saveOffsetToSPIFFS();
+    publishGasVolume();
+  }
+}
+
+void saveParamsCallback()
+{
+  Serial.println("Get Params:");
+  Serial.print(custom_mqtt_server.getID());
+  Serial.print(" : ");
+  Serial.println(custom_mqtt_server.getValue());
+}
+
 // Setup-Funktion
 void setup()
 {
+  WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
+
   Serial.begin(115200);
   Serial.println("Starte Gaszähler ...");
+
+  wm.addParameter(&custom_mqtt_server);
+  wm.addParameter(&custom_mqtt_port);
+  wm.setConfigPortalBlocking(false);
+  wm.setSaveParamsCallback(saveParamsCallback);
+
+  if (wm.autoConnect("GaszaehlerAP"))
+  {
+    Serial.println("connected...yeey :)");
+  }
+  else
+  {
+    Serial.println("Configportal running");
+  }
 
   // SPIFFS initialisieren
   if (!SPIFFS.begin(true))
@@ -316,9 +326,6 @@ void setup()
     Serial.println("SPIFFS-Initialisierung fehlgeschlagen!");
     return;
   }
-
-  loadCountFromSPIFFS();
-  loadOffsetFromSPIFFS();
 
   // Display initialisieren
   tft.init();
@@ -334,16 +341,9 @@ void setup()
   pinMode(BUTTON_1, INPUT_PULLUP);
   pinMode(BUTTON_2, INPUT_PULLUP);
 
-  // Mit WiFi verbinden
-  setup_wifi();
-  reconnect();
-
-  // MQTT-Client einrichten
-  client.setServer(mqtt_server, 1883);
-  client.setCallback(callback);
-
   // Initialen Gasvolumenwert setzen
-
+  loadCountFromSPIFFS();
+  loadOffsetFromSPIFFS();
   updateDisplay();
 
   Serial.println("Setup abgeschlossen.");
@@ -352,30 +352,33 @@ void setup()
 // Hauptschleife
 void loop()
 {
+  wm.process();
   unsigned long currentMillis = millis();
 
   // MQTT-Verbindung prüfen
-  if (!client.connected() && currentMillis - lastMQTTreconnectTime >= MQTTreconnectIntervall)
+  if (WiFi.status() == WL_CONNECTED && !client.connected() && currentMillis - lastMQTTreconnectTime >= MQTTreconnectIntervall)
   {
-    lastMQTTreconnectTime = millis();
-    reconnect();
+    lastMQTTreconnectTime = currentMillis;
+
+    // MQTT-Client einrichten
+
+    strcpy(mqtt_server, custom_mqtt_server.getValue());
+    strcpy(mqtt_port, custom_mqtt_port.getValue());
+
+    client.setServer(mqtt_server, static_cast<uint16_t>(std::stoi(mqtt_port)));
+    client.setCallback(callback);
+
+    setup_mqtt();
   }
 
   // MQTT loop()-Funktion
   client.loop();
 
-  // WiFi-Verbindung prüfen
-  if (WiFi.status() != WL_CONNECTED && currentMillis - lastWiFireconnectTime >= WiFireconnectIntervall)
-  {
-    lastWiFireconnectTime = millis();
-    setup_wifi();
-  }
-
   // Reed-Kontakt analog lesen und Hysterese anwenden
   float voltage = analogRead(REED_PIN);
   if (currentMillis - lastInterruptTime >= InterruptInterval)
   {
-    lastInterruptTime = millis();
+    lastInterruptTime = currentMillis;
     if (lastState && voltage <= HYSTERESIS_LOW)
     {
       lastState = false;
