@@ -6,12 +6,12 @@ Grundlage für dieses Projekt ist das 3d gedruckte Gehäuse von 3dFabrik von hie
 Der Quellcode und große Teile dieses Textes sind mit künstlicher Intelligenz erstellt worden, um einen Anfang zu haben.
 
 # TODO:
-- Mommentan funktioniert das Script nur, wenn WiFi und MQTT verbunden sind. Beides sollte sinnvollerweise optional sein.
-- evtl sollte der beliebte WiFi Manager von tzapu integriert werden, dann könnte ich ein vorkompiliertes binary zur Verfügung stellen, wenn WiFi und MQTT Server on the fly editiert werden können.
+- ~~Mommentan funktioniert das Script nur, wenn WiFi und MQTT verbunden sind. Beides sollte sinnvollerweise optional sein.~~
+- ~~evtl sollte der beliebte WiFi Manager von tzapu integriert werden, dann könnte ich ein vorkompiliertes binary zur Verfügung stellen, wenn WiFi und MQTT Server on the fly editiert werden können.~~
 - Bessere Dokumentation (Offset kann und sollte per MQTT gesetzt werden).
-- Sinnvolle Funktion für den zweiten Button.
-- Das Farbdisplay nutzen.
-- Mehr sinnvolle Ausgaben auf dem Display
+- ~~Sinnvolle Funktion für den zweiten Button.~~
+- ~~Das Farbdisplay nutzen.~~
+- ~~Mehr sinnvolle Ausgaben auf dem Display~~
 - Skript für Zähler mit 1000 Impulsen je m³-Gas anpassen
 
 ## Benutzung
@@ -26,6 +26,8 @@ Eine Kompilierung mit der Arduino IDE ist auch möglich. hierzu muss die erste Z
 - Konfigurierbare WLAN- und MQTT-Einstellungen 
 - Dauerhafte Speicherung von Zählerdaten mittels SPIFFS 
 - Tastenbedienung für verschiedene Anzeigemodi und Konfiguration
+
+![image](./screenshot.png Screenshot)
 
 ### MQTT
 Das Projekt nutzt MQTT zur Veröffentlichung von Gasverbrauchsdaten. 
