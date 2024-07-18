@@ -22,7 +22,9 @@ Grundlage für dieses Projekt ist das 3d gedruckte Gehäuse von 3dFabrik von hie
 Ich habe den Reed Kontakt entgegen vieler (online) Empfehlungen NICHT gegen GND, sondern gegen 3,3 Volt geschalten. 
 
 Ds Schaltbild sieht also so aus:
+
 <img src="shematic.png" width="240">
+
 GPIO32 wird also mit einem 1k-Ohm Pull-Down Widerstand mit Ground verbunden. 
 Wenn der Reedkontakt mit einem Magnet geschlossen wird, hat GPIO32 eine Verbindung zu den 3,3 Volt.
 
