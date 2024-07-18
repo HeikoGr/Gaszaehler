@@ -61,12 +61,7 @@ In regelmäßigen Abständen wird der aktuelle Zählerstand sowie die Wifi und M
 Das speichern kann auf dem Startbildschirm auch mit dem unteren Button erzwunden werden.
 
 # TODO:
-- ~~Mommentan funktioniert das Script nur, wenn WiFi und MQTT verbunden sind. Beides sollte sinnvollerweise optional sein.~~
-- ~~evtl sollte der beliebte WiFi Manager von tzapu integriert werden, dann könnte ich ein vorkompiliertes binary zur Verfügung stellen, wenn WiFi und MQTT Server on the fly editiert werden können.~~
 - Bessere Dokumentation (Zählerstand kann und sollte per MQTT gesetzt werden).
-- ~~Sinnvolle Funktion für den zweiten Button.~~
-- ~~Das Farbdisplay nutzen.~~
-- ~~Mehr sinnvolle Ausgaben auf dem Display~~
 - Skript für Zähler mit 1000 Impulsen je m³-Gas anpassen
 
 ## Alternativen
