@@ -25,9 +25,12 @@ Eine Kompilierung mit der Arduino IDE ist auch möglich. hierzu muss die erste Z
 - Dauerhafte Speicherung von Zählerdaten mittels SPIFFS 
 - Tastenbedienung für verschiedene Anzeigemodi und Konfiguration
 
-![Screenshot Gaszähler](screenshot1.png)
-![Screenshot WiFi Status](screenshot2.png)
-![Screenshot MQTT Status](screenshot3.png)
+<img src="screenshot1.png" width="50%" height="50%">
+
+<img src="screenshot2.png" width="50%" height="50%">
+
+<img src="screenshot3.png" width="50%" height="50%">
+
 ### MQTT
 Das Projekt nutzt MQTT zur Veröffentlichung von Gasverbrauchsdaten. 
 Das Skript erfasst lediglich die entdeckten Impulse. Der aktuelle Zählerstand wird durch einen Offset errechnet. 
