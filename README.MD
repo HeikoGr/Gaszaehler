@@ -35,7 +35,8 @@ Am einfachsten kann das Script mit VSCODE / PlatformIO genutzt werden. Dort einf
 Eine Kompilierung mit der Arduino IDE ist auch möglich. hierzu muss die erste Zeile auskommentiert werden ("#include <Arduino.h>") und das Script in Gaszaehler.ino umbenannt werden.
 
 ## Benutzung
-Das Display kann 3 verschiedene Seiten anzeigen, welche mit dem oberen Taster durchgeschalten werden:
+### Display
+Das Display kann 4 verschiedene Seiten anzeigen, welche mit dem oberen Taster durchgeschalten werden:
 
 <img src="screenshot1.png" width="240">
 Gaszähler, hier wird der aktuelle Zählerstand angezeigt.
@@ -48,20 +49,25 @@ Mit der unteren Taste können die Wifi Einstellungen zurückgesetzt werden. Der 
 MQTT, hier wird die IP Adresse des MQTT Servers, sowie der Gerätename des Gaszählers angezeigt.
 Der MQTT Server kann derzeit nur über das Wifi-Captive Portal geändert werden.
 
-### MQTT
-Das Projekt nutzt MQTT zur Veröffentlichung von Gasverbrauchsdaten. 
-Das Skript erfasst lediglich die entdeckten Impulse. Der aktuelle Zählerstand wird durch einen Offset errechnet. 
+<img src="screenshot4.png" width="240">
+Der Zählerstand kann ganz ohne MQTT auch direkt am Display eingestellt werden.
 
-Derzeit kann der aktuelle Zählerstand lediglich per MQTT verändert werden.
-Hierzu muss der Gaszählerwert unter dem Topic "<GERÄTENAME>/gas_meter/currentVal" publiziert werden.
+### Zählerstand anpassen
+~Derzeit kann der aktuelle Zählerstand lediglich per MQTT verändert werden.~
+
+- Der aktuelle Gaszählerstand kann über das Topic "<GERÄTENAME>/gas_meter/currentVal" verändert werden.
+- alternativ mit der oberen Taste zum vierten Bildschirm wechseln und dort den Zählerstand verändern und speichern. Ein Abrechen ist nicht möglich. Entweder korrekt erfassen, oder den ESP32 reseten (Button/Strom).
+
 Der Gaszähler wird dann den internen den Impulszähler auf "0" setzen, und die folgenden Impulse zum gespeicherten Gaszählerwert addiert ausgeben.
 
 ### SPIFFS-Speicher
 In regelmäßigen Abständen wird der aktuelle Zählerstand sowie die Wifi und MQTT Konfigurationsdaten gespeichert.
 Das speichern kann auf dem Startbildschirm auch mit dem unteren Button erzwunden werden.
 
+### MQTT
+Das Projekt nutzt MQTT zur Veröffentlichung von Gasverbrauchsdaten. 
+
 # TODO:
-- Bessere Dokumentation (Zählerstand kann und sollte per MQTT gesetzt werden).
 - Skript für Zähler mit 1000 Impulsen je m³-Gas anpassen
 
 ## Alternativen

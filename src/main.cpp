@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <WiFiManager.h>
+#include <Button2.h>
 #include <TFT_eSPI.h>
 #include <sstream>
 #include <iomanip>
@@ -19,14 +20,12 @@ SPIFFSManager spiffsManager;
 #define REED_PIN 32 // ADC1 pin
 #define BUTTON_1 35
 #define BUTTON_2 0
-#define DEBOUNCE_DELAY 300 // Debounce delay in milliseconds
 #define HYSTERESIS_LOW 500.0
 #define HYSTERESIS_HIGH 4000.0
 
 // Time intervals
 const unsigned long publishInterval = 60000;         // 60 seconds
 const unsigned long InterruptInterval = 50;          // 50 milliseconds
-const unsigned long buttonCheckInterval = 100;       // 100 milliseconds
 const unsigned long saveInterval = 600000;           // 10 minutes
 const unsigned long WiFireconnectIntervall = 300000; // 5 minutes
 const unsigned long MQTTreconnectIntervall = 60000;  // 1 minute
@@ -48,17 +47,17 @@ bool prevWifiStatus = false;
 bool prevMqttStatus = false;
 int displayMode = 0;
 unsigned long lastPublishTime = 0;
-unsigned long lastButtonCheckTime = 0;
 unsigned long lastSaveTime = 0;
-unsigned long lastButton1PressTime = 0;
-unsigned long lastButton2PressTime = 0;
 unsigned long lastInterruptTime = 0;
 unsigned long lastMQTTreconnectTime = 0;
 unsigned long lastWiFireconnectTime = 0;
 char prevMqttServer[40];
 char prevMqttPort[6];
-const unsigned long longPressDuration = 1000; // Duration for long press (in milliseconds)
-bool button2LongPressActive = false;
+
+// set gas meter manually
+long number = 0; // Verwendet long für größeren Wertebereich
+int cursorPosition = 0;
+const int maxDigits = 9; // 6 Vorkomma + Dezimalpunkt + 2 Nachkomma
 
 // Display
 TFT_eSPI tft = TFT_eSPI();
@@ -73,6 +72,10 @@ WiFiManagerParameter custom_mqtt_port("port", "mqtt port", mqtt_port, 6);
 // PubSub (MQTT)
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+// Button2 instances
+Button2 button1;
+Button2 button2;
 
 // Setup function
 void setup()
@@ -124,8 +127,16 @@ void setup()
 
     // Initialize reed contact and buttons
     pinMode(REED_PIN, INPUT);
-    pinMode(BUTTON_1, INPUT_PULLUP);
-    pinMode(BUTTON_2, INPUT_PULLUP);
+
+    // init Button2
+    button1.begin(BUTTON_1, INPUT_PULLUP, true);
+    button2.begin(BUTTON_2, INPUT_PULLUP, true);
+
+    // set Button2 handler
+    button1.setTapHandler(handleButton1Click);
+    button2.setClickHandler(handleButton2Click);
+    button2.setLongClickDetectedHandler(handleButton2LongPress);
+    button2.setLongClickTime(400);
 
     reconnect_mqtt();
     updateDisplay();
@@ -179,8 +190,10 @@ void loop()
         }
     }
 
+    button1.loop();
+    button2.loop();
+
     if (currentMillis - lastPublishTime >= publishInterval) publishGasVolume(); // MQTT publishing
-    if (currentMillis - lastButtonCheckTime >= buttonCheckInterval) handleButtons(); // Button handling
     if (currentMillis - lastSaveTime >= saveInterval) saveDataToSPIFFS(); // SPIFFS saving
 
     prevWifiStatus = wifiConnected; // Update previous status
@@ -231,6 +244,7 @@ void publishGasVolume()
         Serial.printf("Publishing not possible! MQTT not connected.\n");
         return;
     }
+    gasVolume = pulseCount + offset;
     char msg[50];
     snprintf(msg, 50, "%s", formatWithHundredsSeparator(gasVolume).c_str());
     String mqttTopic = clientID + "/" + mqtt_topic_gas;
@@ -263,6 +277,33 @@ void updateDisplay()
         title = "MQTT";
         line1 = "IP :\n " + String(mqtt_server);
         line2 = "device name :\n " + clientID;
+        break;
+    case 3:
+        tft.fillScreen(TFT_BLACK);
+        tft.setCursor(0, 10);
+        tft.print("             next >");
+        tft.setCursor(30, 60);
+
+        char buffer[15];
+        sprintf(buffer, "%06ld.%02ld  save", number / 100, number % 100);
+        tft.print(buffer);
+
+        // Cursor anzeigen
+        int xPos;
+        xPos = 30 + cursorPosition * 12;
+        if (cursorPosition == 8){
+            xPos += 36; // Für den Dezimalpunkt
+            tft.drawRect(xPos, 77, 46, 2, TFT_RED);
+            tft.setCursor(0, 120);
+            tft.print("             save >");
+            return;
+        }else if (cursorPosition > 5){
+            xPos += 12; // Für den Dezimalpunkt
+        }
+        tft.drawRect(xPos, 77, 10, 2, TFT_RED);
+        tft.setCursor(0, 120);
+        tft.print("               +1 >");
+        return;
         break;
     default:
         gasVolume = pulseCount + offset;
@@ -305,51 +346,85 @@ void updateDisplay()
     tft.print(actionBtn2);
 }
 
-// Function to handle button presses
-void handleButtons()
-{
-    unsigned long currentMillis = millis();
-    handleButton1(currentMillis);
-    handleButton2(currentMillis);
-    lastButtonCheckTime = currentMillis;
+void incrementDigit() {
+    long multiplier = 1;
+    for (int i = 0; i < (7 - cursorPosition); i++)
+    {
+        multiplier *= 10;
+    }
+
+    long digit = (number / multiplier) % 10;
+    digit = (digit + 1) % 10;
+    number = (number / (multiplier * 10)) * (multiplier * 10) + digit * multiplier + number % multiplier;
+
+    updateDisplay();
 }
 
-// Function to handle Button 1 press
-void handleButton1(unsigned long currentMillis)
+void moveCursor()
 {
-    if (digitalRead(BUTTON_1) != LOW)
-        return;
-    if (currentMillis - lastButton1PressTime <= DEBOUNCE_DELAY)
-        return;
-    displayMode = (displayMode + 1) % 3;
+    cursorPosition = (cursorPosition + 1) % maxDigits;
     updateDisplay();
-    lastButton1PressTime = currentMillis;
 }
 
-// Function to handle Button 2 press
-void handleButton2(unsigned long currentMillis)
+void handleButton1Click(Button2 &btn)
 {
-    if (digitalRead(BUTTON_2) != LOW)
+
+    if (displayMode == 2 && number == 0) {
+        // Init setter Display
+        number = pulseCount + offset;
+        cursorPosition = 0;
+    }
+    if (displayMode == 3)
+    {
+        moveCursor();
         return;
-    if (currentMillis - lastButton2PressTime <= DEBOUNCE_DELAY)
-        return;
+    }
+    else
+    {
+        displayMode = (displayMode + 1) % 4;
+    }
     updateDisplay();
-    
-    //captureAndSendScreenshotRLE(tft);
+}
+
+void handleButton2Click(Button2 &btn)
+{
+
+    if (displayMode == 3 && cursorPosition == 8)
+    {
+        pulseCount = 0;
+        offset = number;
+        displayMode = 0;
+        saveDataToSPIFFS();
+        publishGasVolume();
+        updateDisplay();
+        return;
+    }
+    if (displayMode == 3)
+    {
+        incrementDigit();
+        updateDisplay();
+        return;
+    }
 
     if (displayMode == 0 || displayMode == 1)
     {
         reconnect_mqtt();
-        saveDataToSPIFFS();
-        publishGasVolume();
     }
+    saveDataToSPIFFS();
+    publishGasVolume();
     if (displayMode == 1)
     {
         wm.resetSettings();
         delay(20);
         ESP.restart();
     }
-    lastButton2PressTime = currentMillis;
+    return;
+}
+
+void handleButton2LongPress(Button2 &btn)
+{
+    Serial.println("Button 2 long press detected");
+    captureAndSendScreenshotRLE(tft);
 }
 
 // Callback function for saving WiFiManager parameters

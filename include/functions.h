@@ -9,11 +9,14 @@ String formatWithHundredsSeparator(uint32_t value);
 void publishGasVolume();
 void saveDataToSPIFFS();
 void updateDisplay();
-void captureAndSendScreenshotRLE();
-void handleButton1(unsigned long currentMillis);
+void captureAndSendScreenshotRLE(TFT_eSPI &tft);
+void incrementDigit();
+void moveCursor();
+void handleButton1Click(Button2 &btn);
+void handleButton2Click(Button2 &btn);
+void handleButton2LongPress(Button2 &btn);
 void MQTTcallbackReceive(char *topic, byte *payload, unsigned int length);
 boolean reconnect_mqtt();
-void handleButton2(unsigned long currentMillis);
 void handleButtons();
 void WMsaveParamsCallback();
 
