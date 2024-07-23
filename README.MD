@@ -1,5 +1,5 @@
 ## Überblick des Gaszähler-Projekts
-Das TTGO-T ESP32-Board mit integriertem Display kann für einen Standard Balken-Gaszähler (BK-G4) verwendet werden, der Impulse von einem Reed-Schalter zählt und die Daten über MQTT veröffentlicht. Dieses Projekt kombiniert Hardware-Schnittstellen, drahtlose Konnektivität und Datenprotokollierung zu einer IoT-Lösung für die Gasverbrauchsüberwachung.
+Das TTGO-T ESP32-Board mit integriertem Display kann für einen Standard Balgen-Gaszähler (BK-G4) verwendet werden, der Impulse von einem Reed-Schalter zählt und die Daten über MQTT veröffentlicht. Dieses Projekt kombiniert Hardware-Schnittstellen, drahtlose Konnektivität und Datenprotokollierung zu einer IoT-Lösung für die Gasverbrauchsüberwachung.
 
 Grundlage für dieses Projekt ist das 3d gedruckte Gehäuse von 3dFabrik von hier https://www.thingiverse.com/thing:5594161
 
@@ -38,18 +38,18 @@ Eine Kompilierung mit der Arduino IDE ist auch möglich. hierzu muss die erste Z
 ### Display
 Das Display kann 4 verschiedene Seiten anzeigen, welche mit dem oberen Taster durchgeschalten werden:
 
-<img src="screenshot1.png" width="240">
+<img src="screenshot01.png" width="240">
 Gaszähler, hier wird der aktuelle Zählerstand angezeigt.
 
-<img src="screenshot2.png" width="240">
+<img src="screenshot02.png" width="240">
 Wifi, hier wird die SSID des Wifi-Netzwerks, sowie die aktuelle IP-Adresse angezeigt.
 Mit der unteren Taste können die Wifi Einstellungen zurückgesetzt werden. Der ESP32-Gaszähler erstellt dann ein eigenes Wifi mit dem Namen "Gaszaehler-AP" (ohne Passwort). Hier kann dann das eigene Wifi-Netzwerk, sowie der MQTT Server eingetragen werden.
 
-<img src="screenshot3.png" width="240">
+<img src="screenshot03.png" width="240">
 MQTT, hier wird die IP Adresse des MQTT Servers, sowie der Gerätename des Gaszählers angezeigt.
 Der MQTT Server kann derzeit nur über das Wifi-Captive Portal geändert werden.
 
-<img src="screenshot4.png" width="240">
+<img src="screenshot04.png" width="240">
 Der Zählerstand kann ganz ohne MQTT auch direkt am Display eingestellt werden.
 
 ### Zählerstand anpassen
