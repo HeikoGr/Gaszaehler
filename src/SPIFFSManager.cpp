@@ -105,7 +105,6 @@ bool SPIFFSManager::loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_
     strlcpy(mqtt_server, doc["mqtt_server"] | "", 40);
     strlcpy(mqtt_port, doc["mqtt_port"] | "", 6);
 
-    Serial.println("Daten erfolgreich geladen:");
     Serial.printf(" < Zählerstand: %i\n", pulseCount);
     Serial.printf(" < Offset: %i\n", offset);
     Serial.printf(" < MQTT Server: %s\n", mqtt_server);
