@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <title>RLE zu RGB565 zu PNG</title>
+</head>
+
+<body>
+    <h1>RLE zu RGB565 zu PNG</h1>
+
+    <label for="rleInput">Geben Sie die RLE-komprimierten Hex-Werte ein:</label><br>
+    <textarea id="rleInput" rows="10" cols="50"></textarea><br>
+
+    <label for="width">Breite des Bildes:</label>
+    <input type="number" id="width" min="1" value="32"><br>
+
+    <label for="height">Höhe des Bildes:</label>
+    <input type="number" id="height" min="1" value="32"><br>
+
+    <button onclick="decodeAndDisplay()">Dekomprimieren und Bild anzeigen</button>
+
+    <div id="output"></div>
+
+    <script>
+        function decodeAndDisplay() {
+            const rleInput = document.getElementById('rleInput').value.replace(/\s/g, '');
+            const width = parseInt(document.getElementById('width').value);
+            const height = parseInt(document.getElementById('height').value);
+
+            const rgb565Data = decodeRLE(rleInput);
+            const rgbaData = convertRGB565ToRGBA(rgb565Data);
+
+            displayImage(rgbaData, width, height);
+        }
+
+        function decodeRLE(input) {
+            const result = [];
+            for (let i = 0; i < input.length; i += 6) {
+                const count = parseInt(input.substr(i, 2), 16);
+                const color = input.substr(i + 2, 4);
+                for (let j = 0; j < count; j++) {
+                    result.push(color);
+                }
+            }
+            return result;
+        }
+
+        function convertRGB565ToRGBA(rgb565Data) {
+            const rgbaData = new Uint8ClampedArray(rgb565Data.length * 4);
+            for (let i = 0; i < rgb565Data.length; i++) {
+                const color = parseInt(rgb565Data[i], 16);
+                const r = ((color >> 11) & 0x1F) << 3;
+                const g = ((color >> 5) & 0x3F) << 2;
+                const b = (color & 0x1F) << 3;
+                rgbaData[i * 4] = r;
+                rgbaData[i * 4 + 1] = g;
+                rgbaData[i * 4 + 2] = b;
+                rgbaData[i * 4 + 3] = 255; // Alpha-Kanal
+            }
+            return rgbaData;
+        }
+
+        function displayImage(rgbaData, width, height) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            const imageData = new ImageData(rgbaData, width, height);
+            ctx.putImageData(imageData, 0, 0);
+
+            const output = document.getElementById('output');
+            output.innerHTML = '';
+            output.appendChild(canvas);
+        }
+    </script>
+</body>
+
+</html>

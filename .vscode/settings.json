@@ -50,7 +50,13 @@
         "streambuf": "cpp",
         "cinttypes": "cpp",
         "typeinfo": "cpp",
-        "ratio": "cpp"
+        "ratio": "cpp",
+        "chrono": "cpp",
+        "condition_variable": "cpp",
+        "mutex": "cpp",
+        "shared_mutex": "cpp",
+        "thread": "cpp"
     },
-    "C_Cpp.errorSquiggles": "disabled"
+    "C_Cpp.errorSquiggles": "disabled",
+    "sonarlint.pathToCompileCommands": "${workspaceFolder}\\compile_commands.json"
 }
