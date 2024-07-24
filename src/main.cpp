@@ -368,27 +368,19 @@ void moveCursor()
 
 void handleButton1Click(Button2 &btn)
 {
-
-    if (displayMode == 2 && number == 0) {
-        // Init setter Display
-        number = pulseCount + offset;
-        cursorPosition = 0;
-    }
     if (displayMode == 3)
     {
         moveCursor();
         return;
     }
-    else
-    {
-        displayMode = (displayMode + 1) % 4;
-    }
+    number = pulseCount + offset;
+    cursorPosition = 0;
+    displayMode = (displayMode + 1) % 4;
     updateDisplay();
 }
 
 void handleButton2Click(Button2 &btn)
 {
-
     if (displayMode == 3 && cursorPosition == 8)
     {
         pulseCount = 0;
