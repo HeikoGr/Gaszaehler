@@ -11,8 +11,8 @@ public:
 
     bool begin();
     void end();
-    bool saveData(uint32_t pulseCount, uint32_t offset, char* mqtt_server, char* mqtt_port);
-    bool loadData(uint32_t& pulseCount, uint32_t& offset, char* mqtt_server, char* mqtt_port);
+    bool saveData(uint32_t pulseCount, uint32_t offset, char* mqtt_server, char* mqtt_port, char *mqtt_user, char *mqtt_password);
+    bool loadData(uint32_t& pulseCount, uint32_t& offset, char* mqtt_server, char* mqtt_port, char *mqtt_user, char *mqtt_password);
     void listFiles();
 
 private:

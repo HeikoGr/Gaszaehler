@@ -36,8 +36,10 @@ const char *const mqtt_topic_currentVal = "gas_meter/currentVal";
 
 // State values
 uint32_t offset = 0;
-char mqtt_server[40] = "192.168.0.1";
+char mqtt_server[40] = "10.5.0.240";
 char mqtt_port[6] = "1883";
+char mqtt_user[40] = "mqtt";
+char mqtt_password[40] = "foobar";
 uint32_t pulseCount = 0;
 uint32_t gasVolume = 0;
 volatile bool lastState = false;
@@ -68,6 +70,9 @@ String clientID;
 WiFiManager wm;
 WiFiManagerParameter custom_mqtt_server("server", "mqtt server", mqtt_server, 40);
 WiFiManagerParameter custom_mqtt_port("port", "mqtt port", mqtt_port, 6);
+WiFiManagerParameter custom_mqtt_user("username", "mqtt username", mqtt_user, 40);
+WiFiManagerParameter custom_mqtt_password("password", "mqtt password", mqtt_password, 40);
+
 
 // PubSub (MQTT)
 WiFiClient espClient;
@@ -94,7 +99,7 @@ void setup()
     {
         Serial.println("SPIFFS successfully initialized");
         // Load data
-        if (spiffsManager.loadData(pulseCount, offset, mqtt_server, mqtt_port))
+        if (spiffsManager.loadData(pulseCount, offset, mqtt_server, mqtt_port, mqtt_user, mqtt_password))
         {
             Serial.println("Data successfully loaded");
         }
@@ -107,6 +112,8 @@ void setup()
     WiFi.mode(WIFI_STA); // Explicitly set mode, ESP defaults to STA+AP
     wm.addParameter(&custom_mqtt_server);
     wm.addParameter(&custom_mqtt_port);
+    wm.addParameter(&custom_mqtt_user);
+    wm.addParameter(&custom_mqtt_password);
     wm.setConfigPortalBlocking(false);
     wm.setSaveParamsCallback(WMsaveParamsCallback);
 
@@ -210,7 +217,7 @@ void saveDataToSPIFFS()
         Serial.println("No new data to save");
         return;
     }
-    spiffsManager.saveData(pulseCount, offset, mqtt_server, mqtt_port);
+    spiffsManager.saveData(pulseCount, offset, mqtt_server, mqtt_port, mqtt_user, mqtt_password);
     lastSaveTime = millis();
 }
 
@@ -220,8 +227,8 @@ boolean reconnect_mqtt()
     // Set up MQTT client
     client.setServer(mqtt_server, static_cast<uint16_t>(std::stoi(mqtt_port)));
     client.setCallback(MQTTcallbackReceive);
-    Serial.printf("Trying to connect to MQTT server %s:%s ... \n", mqtt_server, mqtt_port);
-    if (client.connect(clientID.c_str()))
+    Serial.printf("Trying to connect to MQTT server %s:%s:%s:%s ... \n", mqtt_server, mqtt_port, mqtt_user, mqtt_password);
+    if (client.connect(clientID.c_str(), mqtt_user, mqtt_password))
     {
         Serial.printf("MQTT connected to %s\n", mqtt_server);
         String mqttTopic = clientID + "/" + mqtt_topic_currentVal;
@@ -424,7 +431,9 @@ void WMsaveParamsCallback()
 {
     strcpy(mqtt_server, custom_mqtt_server.getValue());
     strcpy(mqtt_port, custom_mqtt_port.getValue());
-    Serial.printf("Got MQTT params from WifiManager: %s:%s\n", mqtt_server, mqtt_port);
+    strcpy(mqtt_user, custom_mqtt_user.getValue());
+    strcpy(mqtt_password, custom_mqtt_password.getValue());
+    Serial.printf("Got MQTT params from WifiManager: %s:%s:%s:%s\n", mqtt_server, mqtt_port, mqtt_user, mqtt_password);
     saveDataToSPIFFS();
     reconnect_mqtt();
 }
