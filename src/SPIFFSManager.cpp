@@ -12,8 +12,8 @@ public:
 
     bool begin();
     void end();
-    bool saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_server, char *mqtt_port);
-    bool loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_server, char *mqtt_port);
+    bool saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password);
+    bool loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password);
     void listFiles();
 
 private:
@@ -49,7 +49,7 @@ bool SPIFFSManager::mountSPIFFS()
     return true;
 }
 
-bool SPIFFSManager::saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_server, char *mqtt_port)
+bool SPIFFSManager::saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password)
 {
     File file = SPIFFS.open(DATA_FILE, FILE_WRITE);
     if (!file)
@@ -63,6 +63,8 @@ bool SPIFFSManager::saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_se
     doc["offset"] = offset;
     doc["mqtt_server"] = mqtt_server;
     doc["mqtt_port"] = mqtt_port;
+    doc["mqtt_user"] = mqtt_user;
+    doc["mqtt_password"] = mqtt_user;
 
     if (serializeJson(doc, file) == 0)
     {
@@ -76,12 +78,14 @@ bool SPIFFSManager::saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_se
     Serial.printf(" < Offset: %i\n", offset);
     Serial.printf(" < MQTT Server: %s\n", mqtt_server);
     Serial.printf(" < MQTT Port: %s\n", mqtt_port);
+    Serial.printf(" < MQTT User: %s\n", mqtt_user);
+    Serial.printf(" < MQTT Password: %s\n", mqtt_password);
 
     file.close();
     return true;
 }
 
-bool SPIFFSManager::loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_server, char *mqtt_port)
+bool SPIFFSManager::loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password)
 {
     File file = SPIFFS.open(DATA_FILE, FILE_READ);
     if (!file)
@@ -104,11 +108,15 @@ bool SPIFFSManager::loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_
     offset = doc["offset"].as<uint32_t>();
     strlcpy(mqtt_server, doc["mqtt_server"] | "", 40);
     strlcpy(mqtt_port, doc["mqtt_port"] | "", 6);
-
+    strlcpy(mqtt_user, doc["mqtt_user"] | "", 40);
+    strlcpy(mqtt_password, doc["mqtt_password"] | "", 40);
+    
     Serial.printf(" < Zählerstand: %i\n", pulseCount);
     Serial.printf(" < Offset: %i\n", offset);
     Serial.printf(" < MQTT Server: %s\n", mqtt_server);
     Serial.printf(" < MQTT Port: %s\n", mqtt_port);
+    Serial.printf(" < MQTT Username: %s\n", mqtt_user);
+    Serial.printf(" < MQTT Password: %s\n", mqtt_password);
 
     return true;
 }
