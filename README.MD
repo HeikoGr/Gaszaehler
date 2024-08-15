@@ -12,7 +12,7 @@ Grundlage für dieses Projekt ist das 3d gedruckte Gehäuse von 3dFabrik von hie
 - Tastenbedienung für verschiedene Anzeigemodi und Konfiguration
 
 ## Voraussetzungen
-- Balkengaszähler mit Magnetimpulsgeber
+- Balgengaszähler mit Magnetimpulsgeber
 - Gehäuse (z.B. https://www.thingiverse.com/thing:5594161)
 - Reedkontakt
 - 1k-Ohm Widerstand
