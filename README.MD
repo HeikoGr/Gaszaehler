@@ -72,6 +72,9 @@ Das Projekt nutzt MQTT zur Veröffentlichung von Gasverbrauchsdaten.
 
 # TODO:
 - Skript für Zähler mit 1000 Impulsen je m³-Gas anpassen
+- Bedienung überarbeiten
+- Layout überarbeiten?
+- Sicherheitsrückfrage bei Wifi/MQTT reset?
 
 ## Alternativen
 https://github.com/StefanStrobel/ArduCounter/ zählt an mehr als einem PIN, unterstützt auch das Display und ist stark mit FHEM (fhem.de) verknüpft. Leider keine Unterstützung für MQTT.
