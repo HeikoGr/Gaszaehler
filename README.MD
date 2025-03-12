@@ -3,6 +3,9 @@ Das TTGO-T ESP32-Board mit integriertem Display kann für einen Standard Balgen-
 
 Grundlage für dieses Projekt ist das 3d gedruckte Gehäuse von 3dFabrik von hier https://www.thingiverse.com/thing:5594161
 
+### Changelog
+V 0.0.1 Wifi reconnect hinzugefügt
+
 ### Hauptfunktionen:
 - Erfassung von Impulsen eines Reed-Schalter-Sensors am Gaszähler 
 - Anzeige der Gasverbrauchsdaten auf dem integrierten TFT-Bildschirm 

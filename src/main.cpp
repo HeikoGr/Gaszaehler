@@ -24,11 +24,11 @@ SPIFFSManager spiffsManager;
 #define HYSTERESIS_HIGH 4000.0
 
 // Time intervals
-const unsigned long publishInterval = 60000;         // 60 seconds
-const unsigned long InterruptInterval = 50;          // 50 milliseconds
-const unsigned long saveInterval = 600000;           // 10 minutes
-const unsigned long WiFireconnectIntervall = 300000; // 5 minutes
-const unsigned long MQTTreconnectIntervall = 60000;  // 1 minute
+const unsigned long publishInterval = 1 * 60 * 1000;                // 60 seconds
+const unsigned long InterruptInterval = 50;                         // 50 milliseconds
+const unsigned long saveInterval = 10 * 60 * 10000;                 // 10 minutes
+const unsigned long WiFireconnectIntervall = 1 * 20 * 1000;         // 1 minute
+const unsigned long MQTTreconnectIntervall = 1 * 20 * 1000;         // 1 minute
 
 // MQTT Topics
 const char *const mqtt_topic_gas = "gas_meter/volume";
@@ -48,11 +48,11 @@ uint32_t prevOffset = 0;
 bool prevWifiStatus = false;
 bool prevMqttStatus = false;
 int displayMode = 0;
-unsigned long lastPublishTime = 0;
-unsigned long lastSaveTime = 0;
-unsigned long lastInterruptTime = 0;
-unsigned long lastMQTTreconnectTime = 0;
-unsigned long lastWiFireconnectTime = 0;
+volatile unsigned long lastPublishTime = 0;
+volatile unsigned long lastSaveTime = 0;
+volatile unsigned long lastInterruptTime = 0;
+volatile unsigned long lastMQTTreconnectTime = 0;
+volatile unsigned long lastWiFiconnectTime = 0;
 char prevMqttServer[40];
 char prevMqttPort[6];
 
@@ -73,7 +73,6 @@ WiFiManagerParameter custom_mqtt_port("port", "mqtt port", mqtt_port, 6);
 WiFiManagerParameter custom_mqtt_user("username", "mqtt username", mqtt_user, 40);
 WiFiManagerParameter custom_mqtt_password("password", "mqtt password", mqtt_password, 40);
 
-
 // PubSub (MQTT)
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -86,7 +85,7 @@ Button2 button2;
 void setup()
 {
     Serial.begin(115200);
-    Serial.println("Starting gas meter...");
+    Serial.println("Starting gas meter V 0.0.1 ...");
 
     // Retrieve the individual chip ID of the ESP32
     chipID = String((uint32_t)ESP.getEfuseMac(), HEX);
@@ -120,6 +119,7 @@ void setup()
     if (wm.autoConnect("GaszaehlerAP"))
     {
         Serial.println("connected...yeey :)");
+        lastWiFiconnectTime = millis();
     }
     else
     {
@@ -158,6 +158,15 @@ void loop()
     unsigned long currentMillis = millis();
     bool wifiConnected = (WiFi.status() == WL_CONNECTED);
     bool mqttConnected = client.connected();
+
+    if (!wifiConnected && currentMillis - lastWiFiconnectTime >= WiFireconnectIntervall)
+        {
+            if (wm.autoConnect("GaszaehlerAP"))
+            {
+                Serial.println("reconnected...yeey :)");
+                lastWiFiconnectTime = millis();
+            }
+        }
 
     if (wifiConnected != prevWifiStatus || mqttConnected != prevMqttStatus)
     {
@@ -200,8 +209,10 @@ void loop()
     button1.loop();
     button2.loop();
 
-    if (currentMillis - lastPublishTime >= publishInterval) publishGasVolume(); // MQTT publishing
-    if (currentMillis - lastSaveTime >= saveInterval) saveDataToSPIFFS(); // SPIFFS saving
+    if (currentMillis - lastPublishTime >= publishInterval)
+        publishGasVolume(); // MQTT publishing
+    if (currentMillis - lastSaveTime >= saveInterval)
+        saveDataToSPIFFS(); // SPIFFS saving
 
     prevWifiStatus = wifiConnected; // Update previous status
     prevMqttStatus = mqttConnected; // Update previous status
@@ -256,7 +267,7 @@ void publishGasVolume()
     snprintf(msg, 50, "%s", formatWithHundredsSeparator(gasVolume).c_str());
     String mqttTopic = clientID + "/" + mqtt_topic_gas;
     client.publish(mqttTopic.c_str(), msg);
-    Serial.printf("Gas volume published: %s m3\n", formatWithHundredsSeparator(gasVolume).c_str()); 
+    Serial.printf("Gas volume published: %s m3\n", formatWithHundredsSeparator(gasVolume).c_str());
 }
 
 // Function to format uint32_t with thousands separator
@@ -298,13 +309,16 @@ void updateDisplay()
         // Cursor anzeigen
         int xPos;
         xPos = 30 + cursorPosition * 12;
-        if (cursorPosition == 8){
+        if (cursorPosition == 8)
+        {
             xPos += 36; // Für den Dezimalpunkt
             tft.drawRect(xPos, 77, 46, 2, TFT_RED);
             tft.setCursor(0, 120);
             tft.print("             save >");
             return;
-        }else if (cursorPosition > 5){
+        }
+        else if (cursorPosition > 5)
+        {
             xPos += 12; // Für den Dezimalpunkt
         }
         tft.drawRect(xPos, 77, 10, 2, TFT_RED);
@@ -353,7 +367,8 @@ void updateDisplay()
     tft.print(actionBtn2);
 }
 
-void incrementDigit() {
+void incrementDigit()
+{
     long multiplier = 1;
     for (int i = 0; i < (7 - cursorPosition); i++)
     {
