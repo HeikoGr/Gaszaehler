@@ -27,7 +27,7 @@ Ich habe den Reed-Kontakt entgegen vieler (online) Empfehlungen NICHT gegen GND,
 
 Das Schaltbild sieht also so aus:
 
-<img src="shematic.png" width="240">
+<img src="img/shematic.png" width="240">
 
 GPIO32 wird mit einem 1k-Ohm Pull-Down Widerstand mit Ground verbunden. Wenn der Reedkontakt mit einem Magnet geschlossen wird, hat GPIO32 eine Verbindung zu den 3,3 Volt. Das Gaszähler-Skript erkennt den Sprung auf 3,3 Volt und zählt einen Impuls (nur auf der ansteigenden Flanke, wenn der Zähler bei geschlossenem Kontakt stehen bleibt, sollte dies kein Problem darstellen).
 
