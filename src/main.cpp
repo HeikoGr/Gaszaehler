@@ -24,11 +24,11 @@ SPIFFSManager spiffsManager;
 #define HYSTERESIS_HIGH 4000.0
 
 // Time intervals
-const unsigned long publishInterval = 1 * 60 * 1000;                // 60 seconds
-const unsigned long InterruptInterval = 50;                         // 50 milliseconds
-const unsigned long saveInterval = 10 * 60 * 10000;                 // 10 minutes
-const unsigned long WiFireconnectIntervall = 1 * 20 * 1000;         // 1 minute
-const unsigned long MQTTreconnectIntervall = 1 * 20 * 1000;         // 1 minute
+constexpr unsigned long PUBLISH_INTERVAL = 1 * 60 * 1000;                // 60 seconds
+constexpr unsigned long INTERRUPT_INTERVAL = 50;                         // 50 milliseconds
+constexpr unsigned long SAVE_INTERVAL = 10 * 60 * 10000;                 // 10 minutes
+constexpr unsigned long WIFI_RECONNECT_INTERVAL = 1 * 20 * 1000;         // 1 minute
+constexpr unsigned long MQTT_RECONNECT_INTERVAL = 1 * 20 * 1000;         // 1 minute
 
 // MQTT Topics
 const char *const mqtt_topic_gas = "gas_meter/volume";
@@ -41,18 +41,30 @@ char mqtt_port[6] = "1883";
 char mqtt_user[40] = "mqtt";
 char mqtt_password[40] = "foobar";
 uint32_t pulseCount = 0;
+
+struct ConnectionStatus {
+    bool wifiConnected = false;
+    bool mqttConnected = false;
+    bool prevWifiStatus = false;
+    bool prevMqttStatus = false;
+};
+
+struct TimeStamps {
+    volatile unsigned long lastPublishTime = 0;
+    volatile unsigned long lastSaveTime = 0;
+    volatile unsigned long lastInterruptTime = 0;
+    volatile unsigned long lastMQTTreconnectTime = 0;
+    volatile unsigned long lastWiFiconnectTime = 0;
+};
+
+ConnectionStatus connectionStatus;
+TimeStamps timeStamps;
+
 uint32_t gasVolume = 0;
 volatile bool lastState = false;
 uint32_t prevPulseCount = 0;
 uint32_t prevOffset = 0;
-bool prevWifiStatus = false;
-bool prevMqttStatus = false;
 int displayMode = 0;
-volatile unsigned long lastPublishTime = 0;
-volatile unsigned long lastSaveTime = 0;
-volatile unsigned long lastInterruptTime = 0;
-volatile unsigned long lastMQTTreconnectTime = 0;
-volatile unsigned long lastWiFiconnectTime = 0;
 char prevMqttServer[40];
 char prevMqttPort[6];
 
@@ -120,7 +132,7 @@ void setup()
     if (wm.autoConnect("GaszaehlerAP"))
     {
         Serial.println("connected...yeey :)");
-        lastWiFiconnectTime = millis();
+        timeStamps.lastWiFiconnectTime = millis();
     }
     else
     {
@@ -148,55 +160,42 @@ void setup()
 
     reconnect_mqtt();
     updateDisplay();
-    lastMQTTreconnectTime = millis();
+    timeStamps.lastMQTTreconnectTime = millis();
 
     Serial.println("Setup completed.");
 }
 
 // Main loop
-void loop()
-{
+void loop() {
     unsigned long currentMillis = millis();
-    bool wifiConnected = (WiFi.status() == WL_CONNECTED);
-    bool mqttConnected = client.connected();
+    connectionStatus.wifiConnected = (WiFi.status() == WL_CONNECTED);
+    connectionStatus.mqttConnected = client.connected();
 
-    if (!wifiConnected && currentMillis - lastWiFiconnectTime >= WiFireconnectIntervall)
-        {
-            WiFi.reconnect();
-            lastWiFiconnectTime = millis();
-        }
+    if (!connectionStatus.wifiConnected && currentMillis - timeStamps.lastWiFiconnectTime >= WIFI_RECONNECT_INTERVAL) {
+        WiFi.reconnect();
+        timeStamps.lastWiFiconnectTime = millis();
+    }
 
-    if (wifiConnected != prevWifiStatus || mqttConnected != prevMqttStatus)
-    {
+    if (connectionStatus.wifiConnected != connectionStatus.prevWifiStatus || connectionStatus.mqttConnected != connectionStatus.prevMqttStatus) {
         updateDisplay();
     }
 
     wm.process();
 
     // Check MQTT connection
-    if (wifiConnected && !mqttConnected && currentMillis - lastMQTTreconnectTime >= MQTTreconnectIntervall)
-    {
-        if (reconnect_mqtt())
-        {
-            // lastMQTTreconnectTime = currentMillis;
-        }
-    }
-    else
-    {
+    if (connectionStatus.wifiConnected && !connectionStatus.mqttConnected && currentMillis - timeStamps.lastMQTTreconnectTime >= MQTT_RECONNECT_INTERVAL) {
+        reconnect_mqtt();
+    } else {
         client.loop();
     }
 
     // Read reed contact analog and apply hysteresis
     float voltage = analogRead(REED_PIN);
-    if (currentMillis - lastInterruptTime >= InterruptInterval)
-    {
-        lastInterruptTime = currentMillis;
-        if (lastState && voltage <= HYSTERESIS_LOW)
-        {
+    if (currentMillis - timeStamps.lastInterruptTime >= INTERRUPT_INTERVAL) {
+        timeStamps.lastInterruptTime = currentMillis;
+        if (lastState && voltage <= HYSTERESIS_LOW) {
             lastState = false;
-        }
-        else if (!lastState && voltage > HYSTERESIS_HIGH)
-        {
+        } else if (!lastState && voltage > HYSTERESIS_HIGH) {
             Serial.printf("Pulse registered.\n");
             lastState = true;
             pulseCount++;
@@ -207,13 +206,15 @@ void loop()
     button1.loop();
     button2.loop();
 
-    if (currentMillis - lastPublishTime >= publishInterval)
+    if (currentMillis - timeStamps.lastPublishTime >= PUBLISH_INTERVAL) {
         publishGasVolume(); // MQTT publishing
-    if (currentMillis - lastSaveTime >= saveInterval)
+    }
+    if (currentMillis - timeStamps.lastSaveTime >= SAVE_INTERVAL) {
         saveDataToSPIFFS(); // SPIFFS saving
+    }
 
-    prevWifiStatus = wifiConnected; // Update previous status
-    prevMqttStatus = mqttConnected; // Update previous status
+    connectionStatus.prevWifiStatus = connectionStatus.wifiConnected; // Update previous status
+    connectionStatus.prevMqttStatus = connectionStatus.mqttConnected; // Update previous status
 }
 
 // Function to save the counter value to SPIFFS
@@ -227,7 +228,7 @@ void saveDataToSPIFFS()
         return;
     }
     spiffsManager.saveData(pulseCount, offset, mqtt_server, mqtt_port, mqtt_user, mqtt_password);
-    lastSaveTime = millis();
+    timeStamps.lastSaveTime = millis();
 }
 
 // Function to reconnect to the MQTT broker
@@ -247,14 +248,14 @@ boolean reconnect_mqtt()
     {
         Serial.printf("Failed to connect to MQTT server. Error: %i", client.state());
     }
-    lastMQTTreconnectTime = millis();
+    timeStamps.lastMQTTreconnectTime = millis();
     return client.connected();
 }
 
 // Function to publish gas volume via MQTT
 void publishGasVolume()
 {
-    lastPublishTime = millis();
+    timeStamps.lastPublishTime = millis();
     if (!client.connected())
     {
         Serial.printf("Publishing not possible! MQTT not connected.\n");
@@ -277,7 +278,33 @@ String formatWithHundredsSeparator(uint32_t value)
     return String(oss.str().c_str());
 }
 
-// Function to update the display
+void drawStatusBar(const String& title) {
+    tft.fillRect(0, 0, 240, 27, TFT_DARKGREY);  // Status bar
+    tft.fillRect(0, 115, 240, 1, TFT_DARKGREY); // Accent line
+    tft.setCursor(2, 3);
+    tft.setTextColor(TFT_BLACK, TFT_DARKGREY);
+    tft.setTextSize(3);
+    tft.print(title);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextSize(2);
+}
+
+void drawWifiStatus() {
+    bool wifiConnected = (WiFi.status() == WL_CONNECTED);
+    uint16_t wifiColor = wifiConnected ? TFT_GREEN : TFT_RED;
+    tft.fillRect(188, 1, 24, 24, wifiColor);
+    tft.pushImage(188, 1, 24, 24, wifiIcon, TFT_WHITE);
+    connectionStatus.prevWifiStatus = wifiConnected; // Update previous status
+}
+
+void drawMqttStatus() {
+    bool mqttConnected = client.connected();
+    uint16_t mqttColor = mqttConnected ? TFT_GREEN : TFT_RED;
+    tft.fillRect(215, 1, 24, 24, mqttColor);
+    tft.pushImage(215, 1, 24, 24, mqttIcon, TFT_WHITE);
+    connectionStatus.prevMqttStatus = mqttConnected; // Update previous status
+}
+
 void updateDisplay()
 {
     String title, line1, line2, actionBtn2 = "";
@@ -334,29 +361,10 @@ void updateDisplay()
 
     tft.setCursor(0, 28);
     tft.fillScreen(TFT_BLACK);
-    tft.fillRect(0, 0, 240, 27, TFT_DARKGREY);  // Status bar
-    tft.fillRect(0, 115, 240, 1, TFT_DARKGREY); // Accent line
+    drawStatusBar(title);
+    drawWifiStatus();
+    drawMqttStatus();
 
-    // Draw WIFI status
-    bool wifiConnected = (WiFi.status() == WL_CONNECTED);
-    uint16_t wifiColor = wifiConnected ? TFT_GREEN : TFT_RED;
-    tft.fillRect(188, 1, 24, 24, wifiColor);
-    tft.pushImage(188, 1, 24, 24, wifiIcon, TFT_WHITE);
-    prevWifiStatus = wifiConnected; // Update previous status
-
-    // Draw MQTT status
-    bool mqttConnected = client.connected();
-    uint16_t mqttColor = mqttConnected ? TFT_GREEN : TFT_RED;
-    tft.fillRect(215, 1, 24, 24, mqttColor);
-    tft.pushImage(215, 1, 24, 24, mqttIcon, TFT_WHITE);
-    prevMqttStatus = mqttConnected; // Update previous status
-
-    tft.setCursor(2, 3);
-    tft.setTextColor(TFT_BLACK, TFT_DARKGREY);
-    tft.setTextSize(3);
-    tft.print(title);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.setTextSize(2);
     tft.setCursor(2, 35);
     tft.print(line1);
     tft.setCursor(2, 75);
