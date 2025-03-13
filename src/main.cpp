@@ -16,6 +16,9 @@
 // Global variables and constants
 SPIFFSManager spiffsManager;
 
+// Version
+const char *const version = "V 0.0.1";
+
 // Pin definitions
 #define REED_PIN 32 // ADC1 pin
 #define BUTTON_1 35
@@ -24,11 +27,11 @@ SPIFFSManager spiffsManager;
 #define HYSTERESIS_HIGH 4000.0
 
 // Time intervals
-constexpr unsigned long PUBLISH_INTERVAL = 1 * 60 * 1000;                // 60 seconds
-constexpr unsigned long INTERRUPT_INTERVAL = 50;                         // 50 milliseconds
-constexpr unsigned long SAVE_INTERVAL = 10 * 60 * 10000;                 // 10 minutes
-constexpr unsigned long WIFI_RECONNECT_INTERVAL = 1 * 20 * 1000;         // 1 minute
-constexpr unsigned long MQTT_RECONNECT_INTERVAL = 1 * 20 * 1000;         // 1 minute
+constexpr unsigned long PUBLISH_INTERVAL = 1 * 60 * 1000;        // 60 seconds
+constexpr unsigned long INTERRUPT_INTERVAL = 50;                 // 50 milliseconds
+constexpr unsigned long SAVE_INTERVAL = 10 * 60 * 10000;         // 10 minutes
+constexpr unsigned long WIFI_RECONNECT_INTERVAL = 1 * 20 * 1000; // 20 seconds
+constexpr unsigned long MQTT_RECONNECT_INTERVAL = 1 * 30 * 1000; // 30 seconds
 
 // MQTT Topics
 const char *const mqtt_topic_gas = "gas_meter/volume";
@@ -42,14 +45,16 @@ char mqtt_user[40] = "mqtt";
 char mqtt_password[40] = "foobar";
 uint32_t pulseCount = 0;
 
-struct ConnectionStatus {
+struct ConnectionStatus
+{
     bool wifiConnected = false;
     bool mqttConnected = false;
     bool prevWifiStatus = false;
     bool prevMqttStatus = false;
 };
 
-struct TimeStamps {
+struct TimeStamps
+{
     volatile unsigned long lastPublishTime = 0;
     volatile unsigned long lastSaveTime = 0;
     volatile unsigned long lastInterruptTime = 0;
@@ -97,7 +102,7 @@ Button2 button2;
 void setup()
 {
     Serial.begin(115200);
-    Serial.println("Starting gas meter V 0.0.1 ...");
+    Serial.println("Starting gas meter " + String(version));
 
     // Retrieve the individual chip ID of the ESP32
     chipID = String((uint32_t)ESP.getEfuseMac(), HEX);
@@ -121,10 +126,12 @@ void setup()
     }
 
     WiFi.mode(WIFI_STA); // Explicitly set mode, ESP defaults to STA+AP
+
     wm.addParameter(&custom_mqtt_server);
     wm.addParameter(&custom_mqtt_port);
     wm.addParameter(&custom_mqtt_user);
     wm.addParameter(&custom_mqtt_password);
+
     wm.setConfigPortalBlocking(false);
     wm.setSaveParamsCallback(WMsaveParamsCallback);
     wm.setConfigPortalTimeout(60);
@@ -166,36 +173,45 @@ void setup()
 }
 
 // Main loop
-void loop() {
-    unsigned long currentMillis = millis();
+void loop()
+{
     connectionStatus.wifiConnected = (WiFi.status() == WL_CONNECTED);
     connectionStatus.mqttConnected = client.connected();
 
-    if (!connectionStatus.wifiConnected && currentMillis - timeStamps.lastWiFiconnectTime >= WIFI_RECONNECT_INTERVAL) {
+    if (!connectionStatus.wifiConnected && millis() - timeStamps.lastWiFiconnectTime >= WIFI_RECONNECT_INTERVAL)
+    {
         WiFi.reconnect();
         timeStamps.lastWiFiconnectTime = millis();
     }
 
-    if (connectionStatus.wifiConnected != connectionStatus.prevWifiStatus || connectionStatus.mqttConnected != connectionStatus.prevMqttStatus) {
+    if (connectionStatus.wifiConnected != connectionStatus.prevWifiStatus || connectionStatus.mqttConnected != connectionStatus.prevMqttStatus)
+    {
         updateDisplay();
     }
 
     wm.process();
 
     // Check MQTT connection
-    if (connectionStatus.wifiConnected && !connectionStatus.mqttConnected && currentMillis - timeStamps.lastMQTTreconnectTime >= MQTT_RECONNECT_INTERVAL) {
+    if (connectionStatus.wifiConnected && !connectionStatus.mqttConnected && millis() - timeStamps.lastMQTTreconnectTime >= MQTT_RECONNECT_INTERVAL)
+    {
         reconnect_mqtt();
-    } else {
+    }
+    else
+    {
         client.loop();
     }
 
     // Read reed contact analog and apply hysteresis
     float voltage = analogRead(REED_PIN);
-    if (currentMillis - timeStamps.lastInterruptTime >= INTERRUPT_INTERVAL) {
-        timeStamps.lastInterruptTime = currentMillis;
-        if (lastState && voltage <= HYSTERESIS_LOW) {
+    if (millis() - timeStamps.lastInterruptTime >= INTERRUPT_INTERVAL)
+    {
+        timeStamps.lastInterruptTime = millis();
+        if (lastState && voltage <= HYSTERESIS_LOW)
+        {
             lastState = false;
-        } else if (!lastState && voltage > HYSTERESIS_HIGH) {
+        }
+        else if (!lastState && voltage > HYSTERESIS_HIGH)
+        {
             Serial.printf("Pulse registered.\n");
             lastState = true;
             pulseCount++;
@@ -206,10 +222,12 @@ void loop() {
     button1.loop();
     button2.loop();
 
-    if (currentMillis - timeStamps.lastPublishTime >= PUBLISH_INTERVAL) {
+    if (millis() - timeStamps.lastPublishTime >= PUBLISH_INTERVAL)
+    {
         publishGasVolume(); // MQTT publishing
     }
-    if (currentMillis - timeStamps.lastSaveTime >= SAVE_INTERVAL) {
+    if (millis() - timeStamps.lastSaveTime >= SAVE_INTERVAL)
+    {
         saveDataToSPIFFS(); // SPIFFS saving
     }
 
@@ -278,7 +296,8 @@ String formatWithHundredsSeparator(uint32_t value)
     return String(oss.str().c_str());
 }
 
-void drawStatusBar(const String& title) {
+void drawStatusBar(const String &title)
+{
     tft.fillRect(0, 0, 240, 27, TFT_DARKGREY);  // Status bar
     tft.fillRect(0, 115, 240, 1, TFT_DARKGREY); // Accent line
     tft.setCursor(2, 3);
@@ -289,7 +308,8 @@ void drawStatusBar(const String& title) {
     tft.setTextSize(2);
 }
 
-void drawWifiStatus() {
+void drawWifiStatus()
+{
     bool wifiConnected = (WiFi.status() == WL_CONNECTED);
     uint16_t wifiColor = wifiConnected ? TFT_GREEN : TFT_RED;
     tft.fillRect(188, 1, 24, 24, wifiColor);
@@ -297,7 +317,8 @@ void drawWifiStatus() {
     connectionStatus.prevWifiStatus = wifiConnected; // Update previous status
 }
 
-void drawMqttStatus() {
+void drawMqttStatus()
+{
     bool mqttConnected = client.connected();
     uint16_t mqttColor = mqttConnected ? TFT_GREEN : TFT_RED;
     tft.fillRect(215, 1, 24, 24, mqttColor);
@@ -314,7 +335,7 @@ void updateDisplay()
         title = "Wifi";
         line1 = "SSID:\n " + WiFi.SSID();
         line2 = "IP address:\n " + WiFi.localIP().toString();
-        actionBtn2 = "       reset wifi >";
+        actionBtn2 = "reset wifi & mqtt >";
         break;
     case 2:
         title = "MQTT";
@@ -322,6 +343,12 @@ void updateDisplay()
         line2 = "device name :\n " + clientID;
         break;
     case 3:
+        title = "misc.";
+        line1 = "Version: " + String(version);
+        line2 = "";
+        actionBtn2 = " edit meter value >";
+        break;
+    case 4:
         tft.fillScreen(TFT_BLACK);
         tft.setCursor(0, 10);
         tft.print("             next >");
@@ -396,47 +423,59 @@ void moveCursor()
 
 void handleButton1Click(Button2 &btn)
 {
-    if (displayMode == 3)
+    if (displayMode == 4)
     {
         moveCursor();
-        return;
     }
-    number = pulseCount + offset;
-    cursorPosition = 0;
-    displayMode = (displayMode + 1) % 4;
-    updateDisplay();
+    else
+    {
+        number = pulseCount + offset;
+        cursorPosition = 0;
+        displayMode = (displayMode + 1) % 4;
+        updateDisplay();
+    }
+    return;
 }
 
 void handleButton2Click(Button2 &btn)
 {
-    if (displayMode == 3 && cursorPosition == 8)
+    switch (displayMode)
     {
-        pulseCount = 0;
-        offset = number;
-        displayMode = 0;
+    case 0: // same as 1
+    case 1:
+        reconnect_mqtt();
         saveDataToSPIFFS();
         publishGasVolume();
+        if (displayMode == 1)
+        {
+            wm.resetSettings();
+            delay(20);
+            ESP.restart();
+        }
+        break;
+    case 3:
+        displayMode = 4;
         updateDisplay();
-        return;
-    }
-    if (displayMode == 3)
-    {
-        incrementDigit();
+        break;
+    case 4:
+        if (cursorPosition == 8)
+        {
+            pulseCount = 0;
+            offset = number;
+            displayMode = 0;
+            saveDataToSPIFFS();
+            publishGasVolume();
+        }
+        else
+        {
+            incrementDigit();
+        }
         updateDisplay();
-        return;
-    }
-
-    if (displayMode == 0 || displayMode == 1)
-    {
-        reconnect_mqtt();
-    }
-    saveDataToSPIFFS();
-    publishGasVolume();
-    if (displayMode == 1)
-    {
-        wm.resetSettings();
-        delay(20);
-        ESP.restart();
+        break;
+    default:
+        saveDataToSPIFFS();
+        publishGasVolume();
+        break;
     }
     return;
 }
