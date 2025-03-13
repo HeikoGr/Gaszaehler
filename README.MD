@@ -41,18 +41,23 @@ Eine Kompilierung mit der Arduino IDE ist auch möglich. Hierzu muss die erste Z
 Das Display kann 4 verschiedene Seiten anzeigen, welche mit dem oberen Taster durchgeschaltet werden:
 
 1. **Gaszähler**: Hier wird der aktuelle Zählerstand angezeigt.
+
    <img src="img/screenshot01.png" width="240">
 
 2. **Wifi**: Hier wird die SSID des Wifi-Netzwerks sowie die aktuelle IP-Adresse angezeigt. Mit der unteren Taste können die Wifi-Einstellungen zurückgesetzt werden. Der ESP32-Gaszähler erstellt dann ein eigenes Wifi mit dem Namen "Gaszaehler-AP" (ohne Passwort). Hier kann dann das eigene Wifi-Netzwerk sowie der MQTT-Server eingetragen werden.
+
    <img src="img/screenshot02.png" width="240">
 
 3. **MQTT**: Hier wird die IP-Adresse des MQTT-Servers sowie der Gerätename des Gaszählers angezeigt. Der MQTT-Server kann derzeit nur über das Wifi-Captive Portal geändert werden.
+
    <img src="img/screenshot03.png" width="240">
 
 4. **Misc.**: Zeigt die Version des Gaszähler-Scripts und bietet die Möglichkeit, den Bildschirm zum Ändern des Gaszählerstands aufzurufen.
+
    <img src="img/screenshot04.png" width="240">
 
 5. **Zählerstand anpassen**: Der Zählerstand kann ganz ohne MQTT auch direkt am Display eingestellt werden.
+
    <img src="img/screenshot05.png" width="240">
 
 ### Zählerstand anpassen
