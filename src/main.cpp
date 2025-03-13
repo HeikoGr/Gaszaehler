@@ -115,6 +115,7 @@ void setup()
     wm.addParameter(&custom_mqtt_password);
     wm.setConfigPortalBlocking(false);
     wm.setSaveParamsCallback(WMsaveParamsCallback);
+    wm.setConfigPortalTimeout(60);
 
     if (wm.autoConnect("GaszaehlerAP"))
     {
@@ -161,11 +162,8 @@ void loop()
 
     if (!wifiConnected && currentMillis - lastWiFiconnectTime >= WiFireconnectIntervall)
         {
-            if (wm.autoConnect("GaszaehlerAP"))
-            {
-                Serial.println("reconnected...yeey :)");
-                lastWiFiconnectTime = millis();
-            }
+            WiFi.reconnect();
+            lastWiFiconnectTime = millis();
         }
 
     if (wifiConnected != prevWifiStatus || mqttConnected != prevMqttStatus)
