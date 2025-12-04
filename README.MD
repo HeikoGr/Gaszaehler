@@ -6,6 +6,13 @@ Grundlage für dieses Projekt ist das 3D-gedruckte Gehäuse von 3dFabrik: [Thing
 
 ## Changelog
 - **V 0.0.1**: Wifi reconnect hinzugefügt
+ - **V 0.0.2**: Verbesserungen und neue Features
+    - Home Assistant MQTT-Discovery (retained discovery + Verfügbarkeits-LWT)
+    - Persistenz für `mqtt_clientid`, `mqtt_topic_gas` und `mqtt_topic_current` in SPIFFS
+    - Web-UI: Felder für MQTT Client-ID und Topics sowie Sprachumschalter (Deutsch/Englisch)
+    - Standard-Topics angepasst (z. B. `measurement/gas`, `measurement/current`)
+    - Robustheitsverbesserungen: TCP-Precheck vor MQTT-Connect, besseres Fehler-Logging
+    - ArduinoJson: Umstellung auf `DynamicJsonDocument` zur Vermeidung von Deserialisierungsfehlern
 
 ## Hauptfunktionen
 - Erfassung von Impulsen eines Reed-Schalter-Sensors am Gaszähler
@@ -62,6 +69,7 @@ Das Display kann 4 verschiedene Seiten anzeigen, welche mit dem oberen Taster du
 
 ### Zählerstand anpassen
 - Der aktuelle Gaszählerstand kann über das Topic `<GERÄTENAME>/gas_meter/currentVal` verändert werden.
+ - Der aktuelle Gaszählerstand kann über das Topic `<GERÄTENAME>/measurement/current` verändert werden.
 - Alternativ mit der oberen Taste zum vierten Bildschirm wechseln und dort den Zählerstand verändern und speichern. Ein Abbrechen ist nicht möglich. Entweder korrekt erfassen oder den ESP32 reseten (Button/Strom).
 
 Der Gaszähler wird dann den internen Impulszähler auf "0" setzen und die folgenden Impulse zum gespeicherten Gaszählerwert addiert ausgeben.
