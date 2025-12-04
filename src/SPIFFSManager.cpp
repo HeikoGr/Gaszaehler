@@ -64,7 +64,7 @@ bool SPIFFSManager::saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_se
     doc["mqtt_server"] = mqtt_server;
     doc["mqtt_port"] = mqtt_port;
     doc["mqtt_user"] = mqtt_user;
-    doc["mqtt_password"] = mqtt_user;
+    doc["mqtt_password"] = mqtt_password;
 
     if (serializeJson(doc, file) == 0)
     {

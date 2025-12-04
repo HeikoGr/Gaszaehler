@@ -19,5 +19,11 @@ void MQTTcallbackReceive(char *topic, byte *payload, unsigned int length);
 boolean reconnect_mqtt();
 void handleButtons();
 void WMsaveParamsCallback();
+void setupWebInterface();
+void handleRootRequest();
+void handleStatusRequest();
+void handleConsumptionUpdate();
+void handleMqttConfigUpdate();
+void handleFirmwareUpload();
 
 #endif // FUNCTIONS_H

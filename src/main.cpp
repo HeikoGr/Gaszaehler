@@ -4,6 +4,9 @@
 #include <WiFiManager.h>
 #include <Button2.h>
 #include <TFT_eSPI.h>
+#include <WebServer.h>
+#include <Update.h>
+#include <ArduinoJson.h>
 #include <sstream>
 #include <iomanip>
 
@@ -72,6 +75,8 @@ uint32_t prevOffset = 0;
 int displayMode = 0;
 char prevMqttServer[40];
 char prevMqttPort[6];
+char prevMqttUser[40];
+char prevMqttPassword[40];
 
 // set gas meter manually
 long number = 0; // Verwendet long für größeren Wertebereich
@@ -83,22 +88,302 @@ TFT_eSPI tft = TFT_eSPI();
 String chipID;
 String clientID;
 
+void snapshotPersistentState()
+{
+    prevPulseCount = pulseCount;
+    prevOffset = offset;
+    strlcpy(prevMqttServer, mqtt_server, sizeof(prevMqttServer));
+    strlcpy(prevMqttPort, mqtt_port, sizeof(prevMqttPort));
+    strlcpy(prevMqttUser, mqtt_user, sizeof(prevMqttUser));
+    strlcpy(prevMqttPassword, mqtt_password, sizeof(prevMqttPassword));
+}
+
 // WiFi Manager
 WiFiManager wm;
 WiFiManagerParameter custom_mqtt_server("server", "mqtt server", mqtt_server, 40);
 WiFiManagerParameter custom_mqtt_port("port", "mqtt port", mqtt_port, 6);
 WiFiManagerParameter custom_mqtt_user("username", "mqtt username", mqtt_user, 40);
 WiFiManagerParameter custom_mqtt_password("password", "mqtt password", mqtt_password, 40);
-
 // PubSub (MQTT)
 WiFiClient espClient;
 PubSubClient client(espClient);
-
+// Web server
+WebServer webServer(80);
 // Button2 instances
 Button2 button1;
 Button2 button2;
+// Button2 button2;
 
-// Setup function
+
+// Simple control surface served at runtime
+const char WEB_DASHBOARD[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gaszähler</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap');
+:root {
+    --bg:#030712;
+    --card:rgba(6,10,26,0.85);
+    --accent:#facc15;
+    --accent-2:#38bdf8;
+    --text:#f8fafc;
+    --muted:#94a3b8;
+}
+* { box-sizing:border-box; }
+body {
+    margin:0;
+    min-height:100vh;
+    background:radial-gradient(circle at top,#1e293b,#020617 60%);
+    font-family:'Space Grotesk',sans-serif;
+    color:var(--text);
+    display:flex;
+    justify-content:center;
+    padding:32px;
+}
+main {
+    width:min(960px,100%);
+    display:grid;
+    gap:24px;
+}
+.card {
+    background:var(--card);
+    padding:24px;
+    border-radius:22px;
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow:0 30px 50px rgba(0,0,0,0.4);
+}
+.header h1 {
+    margin:0;
+    font-size:2.4rem;
+}
+.header p { color:var(--muted); }
+.status-dot {
+    display:inline-block;
+    width:12px;
+    height:12px;
+    border-radius:50%;
+    margin-left:8px;
+    background:#ef4444;
+}
+.status-dot.online { background:#22c55e; }
+.muted { color:var(--muted); font-size:0.9rem; }
+form { display:flex; flex-direction:column; gap:12px; }
+label {
+    font-size:0.85rem;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    color:var(--muted);
+}
+input {
+    padding:12px 14px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,0.15);
+    background:rgba(255,255,255,0.04);
+    color:var(--text);
+    font-size:1rem;
+}
+button {
+    border:none;
+    border-radius:999px;
+    padding:12px 20px;
+    font-size:1rem;
+    font-weight:600;
+    letter-spacing:0.03em;
+    color:#0f172a;
+    cursor:pointer;
+    background:linear-gradient(120deg,var(--accent),var(--accent-2));
+}
+button:disabled { opacity:0.4; cursor:not-allowed; }
+.feedback { min-height:1.2rem; font-size:0.85rem; color:var(--muted); }
+.grid-two {
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:12px;
+}
+@media (max-width:768px) {
+    body { padding:16px; }
+    main { gap:18px; }
+}
+</style>
+</head>
+<body>
+<main>
+    <section class="header">
+        <h1>Gaszähler</h1>
+        <p>Live-Status & Steuerung</p>
+    </section>
+    <section class="card" id="status-card">
+        <h2 id="volume">-- m³</h2>
+        <p class="muted">MQTT <span id="mqtt-dot" class="status-dot"></span></p>
+        <p id="mqtt-info" class="muted"></p>
+        <p id="uptime" class="muted"></p>
+    </section>
+    <section class="card">
+        <h3>Zählerstand korrigieren</h3>
+        <form id="consumption-form">
+            <label for="consumption">Neuer Wert (m³)</label>
+            <input type="number" step="0.01" min="0" id="consumption" name="value" required>
+            <button type="submit">Speichern</button>
+            <span class="feedback" id="consumption-feedback"></span>
+        </form>
+    </section>
+    <section class="card">
+        <h3>MQTT Parameter</h3>
+        <form id="mqtt-form">
+            <div class="grid-two">
+                <div>
+                    <label for="mqtt-server">Server</label>
+                    <input type="text" id="mqtt-server" name="server" required>
+                </div>
+                <div>
+                    <label for="mqtt-port">Port</label>
+                    <input type="number" id="mqtt-port" name="port" min="1" max="65535" required>
+                </div>
+            </div>
+            <div class="grid-two">
+                <div>
+                    <label for="mqtt-user">User</label>
+                    <input type="text" id="mqtt-user" name="username">
+                </div>
+                <div>
+                    <label for="mqtt-password">Passwort</label>
+                    <input type="password" id="mqtt-password" name="password">
+                </div>
+            </div>
+            <button type="submit">Übernehmen & Verbinden</button>
+            <span class="feedback" id="mqtt-feedback"></span>
+        </form>
+    </section>
+    <section class="card">
+        <h3>OTA Update</h3>
+        <form id="ota-form" action="/update" method="POST" enctype="multipart/form-data">
+            <label for="firmware">Firmware (.bin)</label>
+            <input type="file" id="firmware" name="firmware" accept=".bin" required>
+            <button type="submit">Upload & Flash</button>
+            <span class="feedback" id="ota-feedback"></span>
+        </form>
+    </section>
+</main>
+<script>
+const volumeEl = document.getElementById('volume');
+const mqttDot = document.getElementById('mqtt-dot');
+const mqttInfo = document.getElementById('mqtt-info');
+const uptimeEl = document.getElementById('uptime');
+const consumptionForm = document.getElementById('consumption-form');
+const consumptionFeedback = document.getElementById('consumption-feedback');
+const consumptionInput = document.getElementById('consumption');
+const mqttForm = document.getElementById('mqtt-form');
+const mqttFeedback = document.getElementById('mqtt-feedback');
+const otaForm = document.getElementById('ota-form');
+const otaFeedback = document.getElementById('ota-feedback');
+
+const nf = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+async function refreshStatus() {
+    try {
+        const response = await fetch('/api/status');
+        if (!response.ok) throw new Error('Status HTTP ' + response.status);
+        const data = await response.json();
+        volumeEl.textContent = data.gasVolumeFormatted + ' m³';
+        mqttDot.classList.toggle('online', data.mqttConnected);
+        mqttInfo.textContent = `${data.mqttServer}:${data.mqttPort} · Topic ${data.mqttTopicGas}`;
+        uptimeEl.textContent = `Uptime: ${formatUptime(data.uptimeSeconds)}`;
+        consumptionInput.placeholder = nf.format(data.gasVolumeM3 || 0);
+        if (!consumptionInput.value) {
+            consumptionInput.value = nf.format(data.gasVolumeM3 || 0);
+        }
+        mqttForm.server.value = data.mqttServer || '';
+        mqttForm.port.value = data.mqttPort || '';
+        mqttForm.username.value = data.mqttUser || '';
+        mqttForm.password.value = data.maskedPassword || '';
+    } catch (error) {
+        mqttInfo.textContent = 'Status nicht verfügbar';
+    }
+}
+
+function formatUptime(seconds) {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    return `${hrs}h ${mins}m`;
+}
+
+consumptionForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const value = consumptionInput.value;
+    consumptionFeedback.textContent = 'Wird übertragen...';
+    try {
+        const body = new URLSearchParams({ value });
+        const response = await fetch('/api/consumption', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = await response.json();
+        consumptionFeedback.textContent = `Gespeichert: ${nf.format(data.value)} m³`;
+        await refreshStatus();
+    } catch (error) {
+        consumptionFeedback.textContent = 'Fehler: ' + error.message;
+    }
+});
+
+mqttForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    mqttFeedback.textContent = 'Neue Parameter werden übernommen...';
+    const formData = new URLSearchParams({
+        server: mqttForm.server.value,
+        port: mqttForm.port.value,
+        username: mqttForm.username.value,
+        password: mqttForm.password.value
+    });
+    try {
+        const response = await fetch('/api/mqtt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: formData
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = await response.json();
+        mqttFeedback.textContent = data.mqttConnected ? 'Verbunden.' : 'Einstellungen gespeichert, Verbindung wird versucht...';
+        await refreshStatus();
+    } catch (error) {
+        mqttFeedback.textContent = 'Fehler: ' + error.message;
+    }
+});
+otaForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const file = document.getElementById('firmware').files[0];
+    if (!file) {
+        otaFeedback.textContent = 'Bitte eine Firmware auswählen.';
+        return;
+    }
+    otaFeedback.textContent = 'Upload läuft...';
+    const formData = new FormData();
+    formData.append('firmware', file, file.name);
+    try {
+        const response = await fetch('/update', { method: 'POST', body: formData });
+        const data = await response.json();
+        if (response.ok && data.success) {
+            otaFeedback.textContent = 'Update erfolgreich. Gerät startet neu.';
+            setTimeout(() => location.reload(), 3000);
+        } else {
+            throw new Error(data.message || 'Update fehlgeschlagen');
+        }
+    } catch (error) {
+        otaFeedback.textContent = 'Fehler: ' + error.message;
+    }
+});
+
+refreshStatus();
+setInterval(refreshStatus, 5000);
+</script>
+</body>
+</html>
+)rawliteral";
 void setup()
 {
     Serial.begin(115200);
@@ -124,6 +409,8 @@ void setup()
     {
         Serial.println("SPIFFS initialization failed");
     }
+
+        snapshotPersistentState();
 
     WiFi.mode(WIFI_STA); // Explicitly set mode, ESP defaults to STA+AP
 
@@ -165,6 +452,7 @@ void setup()
     button2.setLongClickDetectedHandler(handleButton2LongPress);
     button2.setLongClickTime(400);
 
+    setupWebInterface();
     reconnect_mqtt();
     updateDisplay();
     timeStamps.lastMQTTreconnectTime = millis();
@@ -190,6 +478,7 @@ void loop()
     }
 
     wm.process();
+    webServer.handleClient();
 
     // Check MQTT connection
     if (connectionStatus.wifiConnected && !connectionStatus.mqttConnected && millis() - timeStamps.lastMQTTreconnectTime >= MQTT_RECONNECT_INTERVAL)
@@ -240,13 +529,17 @@ void saveDataToSPIFFS()
 {
     // Only write if something has changed (better to set a dirty flag?)
     if (pulseCount == prevPulseCount && offset == prevOffset &&
-        strcmp(mqtt_server, prevMqttServer) == 0 && strcmp(mqtt_port, prevMqttPort) == 0)
+        strcmp(mqtt_server, prevMqttServer) == 0 && strcmp(mqtt_port, prevMqttPort) == 0 &&
+        strcmp(mqtt_user, prevMqttUser) == 0 && strcmp(mqtt_password, prevMqttPassword) == 0)
     {
         Serial.println("No new data to save");
         return;
     }
-    spiffsManager.saveData(pulseCount, offset, mqtt_server, mqtt_port, mqtt_user, mqtt_password);
-    timeStamps.lastSaveTime = millis();
+    if (spiffsManager.saveData(pulseCount, offset, mqtt_server, mqtt_port, mqtt_user, mqtt_password))
+    {
+        snapshotPersistentState();
+        timeStamps.lastSaveTime = millis();
+    }
 }
 
 // Function to reconnect to the MQTT broker
@@ -516,4 +809,192 @@ void MQTTcallbackReceive(char *topic, byte *payload, unsigned int length)
         saveDataToSPIFFS();
         publishGasVolume();
     }
+}
+
+void handleRootRequest()
+{
+    webServer.send_P(200, "text/html", WEB_DASHBOARD);
+}
+
+void handleStatusRequest()
+{
+    connectionStatus.wifiConnected = (WiFi.status() == WL_CONNECTED);
+    connectionStatus.mqttConnected = client.connected();
+    StaticJsonDocument<768> doc;
+    uint32_t currentVolume = pulseCount + offset;
+    doc["gasVolumeRaw"] = currentVolume;
+    doc["gasVolumeM3"] = static_cast<float>(currentVolume) / 100.0f;
+    doc["gasVolumeFormatted"] = formatWithHundredsSeparator(currentVolume);
+    doc["mqttConnected"] = connectionStatus.mqttConnected;
+    doc["mqttServer"] = mqtt_server;
+    doc["mqttPort"] = mqtt_port;
+    doc["mqttUser"] = mqtt_user;
+    doc["maskedPassword"] = strlen(mqtt_password) ? "********" : "";
+    doc["wifiConnected"] = connectionStatus.wifiConnected;
+    doc["uptimeSeconds"] = millis() / 1000;
+    doc["version"] = version;
+    doc["clientID"] = clientID;
+    doc["mqttTopicGas"] = String(clientID + "/" + mqtt_topic_gas);
+    doc["mqttTopicCurrent"] = String(clientID + "/" + mqtt_topic_currentVal);
+    doc["offset"] = offset;
+    doc["pulseCount"] = pulseCount;
+
+    String payload;
+    serializeJson(doc, payload);
+    webServer.send(200, "application/json", payload);
+}
+
+void handleConsumptionUpdate()
+{
+    if (!webServer.hasArg("value"))
+    {
+        webServer.send(400, "application/json", "{\"error\":\"value missing\"}");
+        return;
+    }
+    String target = webServer.arg("value");
+    target.trim();
+    target.replace(',', '.');
+    if (target.length() == 0)
+    {
+        webServer.send(400, "application/json", "{\"error\":\"value empty\"}");
+        return;
+    }
+    double newValue = target.toDouble();
+    if (newValue < 0)
+    {
+        webServer.send(400, "application/json", "{\"error\":\"value negative\"}");
+        return;
+    }
+    uint32_t scaled = static_cast<uint32_t>(newValue * 100.0 + 0.5);
+    if (scaled >= pulseCount)
+    {
+        offset = scaled - pulseCount;
+    }
+    else
+    {
+        offset = scaled;
+        pulseCount = 0;
+    }
+
+    updateDisplay();
+    saveDataToSPIFFS();
+    publishGasVolume();
+
+    StaticJsonDocument<256> doc;
+    doc["status"] = "ok";
+    doc["value"] = static_cast<float>(scaled) / 100.0f;
+    doc["gasVolumeFormatted"] = formatWithHundredsSeparator(pulseCount + offset);
+    String payload;
+    serializeJson(doc, payload);
+    webServer.send(200, "application/json", payload);
+}
+
+void handleMqttConfigUpdate()
+{
+    if (!webServer.hasArg("server") || !webServer.hasArg("port"))
+    {
+        webServer.send(400, "application/json", "{\"error\":\"server and port required\"}");
+        return;
+    }
+    String serverArg = webServer.arg("server");
+    serverArg.trim();
+    String portArg = webServer.arg("port");
+    portArg.trim();
+    if (serverArg.isEmpty() || portArg.isEmpty())
+    {
+        webServer.send(400, "application/json", "{\"error\":\"invalid input\"}");
+        return;
+    }
+
+    long portLong = portArg.toInt();
+    if (portLong <= 0 || portLong > 65535)
+    {
+        webServer.send(400, "application/json", "{\"error\":\"port out of range\"}");
+        return;
+    }
+
+    String userArg = webServer.hasArg("username") ? webServer.arg("username") : "";
+    String passArg = webServer.hasArg("password") ? webServer.arg("password") : "";
+
+    strlcpy(mqtt_server, serverArg.c_str(), sizeof(mqtt_server));
+    strlcpy(mqtt_port, portArg.c_str(), sizeof(mqtt_port));
+    strlcpy(mqtt_user, userArg.c_str(), sizeof(mqtt_user));
+    strlcpy(mqtt_password, passArg.c_str(), sizeof(mqtt_password));
+
+    saveDataToSPIFFS();
+    bool connected = reconnect_mqtt();
+
+    StaticJsonDocument<256> doc;
+    doc["status"] = "ok";
+    doc["mqttConnected"] = connected;
+    doc["mqttServer"] = mqtt_server;
+    doc["mqttPort"] = mqtt_port;
+    String payload;
+    serializeJson(doc, payload);
+    webServer.send(200, "application/json", payload);
+}
+
+void handleFirmwareUpload()
+{
+    HTTPUpload &upload = webServer.upload();
+    if (upload.status == UPLOAD_FILE_START)
+    {
+        Serial.printf("OTA: Upload start %s\n", upload.filename.c_str());
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN))
+        {
+            Update.printError(Serial);
+        }
+    }
+    else if (upload.status == UPLOAD_FILE_WRITE)
+    {
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
+        {
+            Update.printError(Serial);
+        }
+    }
+    else if (upload.status == UPLOAD_FILE_END)
+    {
+        if (Update.end(true))
+        {
+            Serial.printf("OTA: Update success (%u bytes)\n", upload.totalSize);
+        }
+        else
+        {
+            Update.printError(Serial);
+        }
+    }
+    else if (upload.status == UPLOAD_FILE_ABORTED)
+    {
+        Update.end();
+        Serial.println("OTA: Upload aborted");
+    }
+}
+
+void setupWebInterface()
+{
+    webServer.on("/", HTTP_GET, handleRootRequest);
+    webServer.on("/api/status", HTTP_GET, handleStatusRequest);
+    webServer.on("/api/consumption", HTTP_POST, handleConsumptionUpdate);
+    webServer.on("/api/mqtt", HTTP_POST, handleMqttConfigUpdate);
+    webServer.on("/update", HTTP_POST,
+                 []()
+                 {
+                     bool success = !Update.hasError();
+                     StaticJsonDocument<128> doc;
+                     doc["success"] = success;
+                     doc["message"] = success ? "Update erfolgreich" : "Update fehlgeschlagen";
+                     String payload;
+                     serializeJson(doc, payload);
+                     webServer.send(success ? 200 : 500, "application/json", payload);
+                     if (success)
+                     {
+                         delay(200);
+                         ESP.restart();
+                     }
+                 },
+                 handleFirmwareUpload);
+    webServer.onNotFound([]()
+                         { webServer.send(404, "application/json", "{\"error\":\"not found\"}"); });
+    webServer.begin();
+    Serial.println("HTTP dashboard available on http://" + WiFi.localIP().toString());
 }
