@@ -1,24 +1,6 @@
+#include "SPIFFSManager.h"
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
-
-class SPIFFSManager
-{
-private:
-    static const char *DATA_FILE;
-
-public:
-    SPIFFSManager();
-    ~SPIFFSManager();
-
-    bool begin();
-    void end();
-    bool saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password);
-    bool loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password);
-    void listFiles();
-
-private:
-    bool mountSPIFFS();
-};
 
 const char *SPIFFSManager::DATA_FILE = "/data.json";
 
@@ -43,64 +25,68 @@ bool SPIFFSManager::mountSPIFFS()
 {
     if (!SPIFFS.begin(true))
     {
-        Serial.println("Fehler beim Mounten von SPIFFS");
+        Serial.println("Error mounting SPIFFS");
         return false;
     }
     return true;
 }
 
-bool SPIFFSManager::saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password)
+bool SPIFFSManager::saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password, char *mqtt_clientid, char *mqtt_topic_gas, char *mqtt_topic_current)
 {
     File file = SPIFFS.open(DATA_FILE, FILE_WRITE);
     if (!file)
     {
-        Serial.println("Fehler beim Öffnen der Datei zum Schreiben");
+        Serial.println("Error opening file for writing");
         return false;
     }
 
-    JsonDocument doc;
+    DynamicJsonDocument doc(1024);
     doc["count"] = pulseCount;
     doc["offset"] = offset;
     doc["mqtt_server"] = mqtt_server;
     doc["mqtt_port"] = mqtt_port;
     doc["mqtt_user"] = mqtt_user;
     doc["mqtt_password"] = mqtt_password;
+    // optional fields
+    doc["mqtt_clientid"] = mqtt_clientid;
+    doc["mqtt_topic_gas"] = mqtt_topic_gas;
+    doc["mqtt_topic_current"] = mqtt_topic_current;
 
     if (serializeJson(doc, file) == 0)
     {
-        Serial.println("Fehler beim Schreiben der Daten");
+        Serial.println("Error writing data");
         file.close();
         return false;
     }
 
-    Serial.println("Daten erfolgreich geschrieben:");
-    Serial.printf(" < Zählerstand: %i\n", pulseCount);
+    Serial.println("Data successfully written:");
+    Serial.printf(" < Meter reading: %i\n", pulseCount);
     Serial.printf(" < Offset: %i\n", offset);
     Serial.printf(" < MQTT Server: %s\n", mqtt_server);
     Serial.printf(" < MQTT Port: %s\n", mqtt_port);
-    Serial.printf(" < MQTT User: %s\n", mqtt_user);
+    Serial.printf(" < MQTT Username: %s\n", mqtt_user);
     Serial.printf(" < MQTT Password: %s\n", mqtt_password);
 
     file.close();
     return true;
 }
 
-bool SPIFFSManager::loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password)
+bool SPIFFSManager::loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password, char *mqtt_clientid, char *mqtt_topic_gas, char *mqtt_topic_current)
 {
     File file = SPIFFS.open(DATA_FILE, FILE_READ);
     if (!file)
     {
-        Serial.println("Fehler beim Öffnen der Datei zum Lesen");
+        Serial.println("Error opening file for reading");
         return false;
     }
 
-    JsonDocument doc;
+    DynamicJsonDocument doc(1024);
     DeserializationError error = deserializeJson(doc, file);
     file.close();
 
     if (error)
     {
-        Serial.println("Fehler beim Deserialisieren der JSON-Daten");
+        Serial.println("Error deserializing JSON data");
         return false;
     }
 
@@ -110,8 +96,11 @@ bool SPIFFSManager::loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_
     strlcpy(mqtt_port, doc["mqtt_port"] | "", 6);
     strlcpy(mqtt_user, doc["mqtt_user"] | "", 40);
     strlcpy(mqtt_password, doc["mqtt_password"] | "", 40);
+    strlcpy(mqtt_clientid, doc["mqtt_clientid"] | "", 64);
+    strlcpy(mqtt_topic_gas, doc["mqtt_topic_gas"] | "", 64);
+    strlcpy(mqtt_topic_current, doc["mqtt_topic_current"] | "", 64);
     
-    Serial.printf(" < Zählerstand: %i\n", pulseCount);
+    Serial.printf(" < Meter reading: %i\n", pulseCount);
     Serial.printf(" < Offset: %i\n", offset);
     Serial.printf(" < MQTT Server: %s\n", mqtt_server);
     Serial.printf(" < MQTT Port: %s\n", mqtt_port);
