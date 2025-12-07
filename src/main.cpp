@@ -44,7 +44,7 @@ String mqtt_topic_currentVal = "measurement/current";
 
 // State values
 uint32_t offset = 0;
-char mqtt_server[40] = "10.5.0.240";
+char mqtt_server[40] = "192.168.178.203";
 char mqtt_port[6] = "1883";
 char mqtt_user[40] = "mqtt";
 char mqtt_password[40] = "foobar";
@@ -266,7 +266,7 @@ input, select, textarea { width: 100%; box-sizing: border-box; }
         <h3 id="lbl-correct">Correct meter reading</h3>
         <form id="consumption-form">
             <label for="consumption" id="lbl-new-val">New value (m³)</label>
-            <input type="text" inputmode="decimal" pattern="[0-9]+([\\.,][0-9]{1,2})?" id="consumption" name="value" required>
+            <input type="text" inputmode="decimal" pattern="[0-9\s\.'`]+([\\.,][0-9]{1,2})?" id="consumption" name="value" required>
             <button type="submit" id="btn-save">Save</button>
             <span class="feedback" id="consumption-feedback"></span>
         </form>
@@ -436,7 +436,10 @@ function t(key) {
 consumptionForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const raw = consumptionInput.value.trim();
-    const normalized = raw.replace(',', '.');
+    // Strip thousand separators (space, dot, apostrophe/backtick) and normalize decimal comma to dot
+    const normalized = raw
+        .replace(/[\s\.'`]/g, '')
+        .replace(',', '.');
     const value = normalized;
     consumptionFeedback.textContent = t('consuming');
     try {
