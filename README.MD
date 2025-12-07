@@ -1,90 +1,112 @@
-# Gaszähler-Projekt
+# Gas Meter (ESP32 TTGO T-Display)
 
-Das TTGO-T ESP32-Board mit integriertem Display kann für einen Standard Balgen-Gaszähler (BK-G4) verwendet werden, der Impulse von einem Reed-Schalter zählt und die Daten über MQTT veröffentlicht. Dieses Projekt kombiniert Hardware-Schnittstellen, drahtlose Konnektivität und Datenprotokollierung zu einer IoT-Lösung für die Gasverbrauchsüberwachung.
+An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G4), counts pulses and publishes consumption via MQTT. It provides a small web UI (English/German), Home Assistant MQTT discovery (retained), and persists Wi-Fi/MQTT settings plus counter state in SPIFFS.
 
-Grundlage für dieses Projekt ist das 3D-gedruckte Gehäuse von 3dFabrik: [Thingiverse Link](https://www.thingiverse.com/thing:5594161)
+3D-printed enclosure by 3dFabrik: [Thingiverse](https://www.thingiverse.com/thing:5594161)
 
 ## Changelog
-- **V 0.0.1**: Wifi reconnect hinzugefügt
- - **V 0.0.2**: Verbesserungen und neue Features
-    - Home Assistant MQTT-Discovery (retained discovery + Verfügbarkeits-LWT)
-    - Persistenz für `mqtt_clientid`, `mqtt_topic_gas` und `mqtt_topic_current` in SPIFFS
-    - Web-UI: Felder für MQTT Client-ID und Topics sowie Sprachumschalter (Deutsch/Englisch)
-    - Standard-Topics angepasst (z. B. `measurement/gas`, `measurement/current`)
-    - Robustheitsverbesserungen: TCP-Precheck vor MQTT-Connect, besseres Fehler-Logging
-    - ArduinoJson: Umstellung auf `DynamicJsonDocument` zur Vermeidung von Deserialisierungsfehlern
+- **V 0.1.0**
+  - UI: mobile tweaks, restart button, locale-aware input (comma/point), browser-driven language default (DE/EN toggle remains)
+  - MQTT/HA: `device_class: gas`, retained discovery + availability, larger MQTT packet buffer, restart endpoint
+  - Web UI: MQTT fields with autocomplete hints; inputs for clientID/topics; discovery resilience
+- **V 0.0.2**
+  - Home Assistant MQTT discovery (retained) + availability LWT
+  - Persist `mqtt_clientid`, `mqtt_topic_gas`, `mqtt_topic_current` in SPIFFS
+  - Web UI MQTT fields and language switch (EN/DE), default topics `measurement/gas`, `measurement/current`
+  - MQTT robustness: TCP precheck, better logging; ArduinoJson switched to `DynamicJsonDocument`
+- **V 0.0.1**
+  - Wi-Fi reconnect added
 
-## Hauptfunktionen
-- Erfassung von Impulsen eines Reed-Schalter-Sensors am Gaszähler
-- Anzeige der Gasverbrauchsdaten auf dem integrierten TFT-Bildschirm
-- Veröffentlichung von Gasverbrauchsmetriken an einen MQTT-Broker
-- Konfigurierbare WLAN- und MQTT-Einstellungen
-- Dauerhafte Speicherung von Zählerdaten mittels SPIFFS
-- Tastenbedienung für verschiedene Anzeigemodi und Konfiguration
-
-## Voraussetzungen
-- Balgengaszähler mit Magnetimpulsgeber
-- Gehäuse (z.B. [Thingiverse Link](https://www.thingiverse.com/thing:5594161))
-- Reedkontakt
-- 1k-Ohm Widerstand
-- Lilygo TTGO T-Display ([Produktlink](https://www.lilygo.cc/products/lilygo%C2%AE-ttgo-t-display-1-14-inch-lcd-esp32-control-board?variant=42159376433333))
+## Features
+- Pulse counting via reed switch, hysteresis for noise rejection
+- TFT display with multiple views (Gas, Wi-Fi, MQTT, Misc, Edit meter)
+- MQTT publishing with retained numeric state (`<clientID>/measurement/gas/state`) and Home Assistant discovery
+- Configurable Wi-Fi and MQTT via web UI; settings and counter persisted to SPIFFS
+- Web UI in English/German, mobile-friendly layout, restart button, OTA update form
 
 ## Hardware
-Ich habe den Reed-Kontakt entgegen vieler (online) Empfehlungen NICHT gegen GND, sondern gegen 3,3 Volt geschaltet.
+- Diaphragm gas meter with magnetic pulse output
+- Reed switch, 1 kΩ pull-down on GPIO32 to GND
+- LilyGO TTGO T-Display (ESP32)
+- Optional: 3D-printed case from Thingiverse link above
 
-Das Schaltbild sieht also so aus:
+Wiring note: Reed contact to 3.3 V; GPIO32 pulled down with 1 kΩ. On rising edge the pulse is counted.
 
-<img src="img/shematic.png" width="240">
+<img src="img/shematic.png" width="240" alt="Wiring schematic">
 
-GPIO32 wird mit einem 1k-Ohm Pull-Down Widerstand mit Ground verbunden. Wenn der Reedkontakt mit einem Magnet geschlossen wird, hat GPIO32 eine Verbindung zu den 3,3 Volt. Das Gaszähler-Skript erkennt den Sprung auf 3,3 Volt und zählt einen Impuls (nur auf der ansteigenden Flanke, wenn der Zähler bei geschlossenem Kontakt stehen bleibt, sollte dies kein Problem darstellen).
+## Build
+- Preferred: VS Code + PlatformIO. Import the project, adjust Wi-Fi/MQTT defaults if needed, then build & upload.
+  ```
+  platformio run --environment lilygo-t-display
+  platformio run --target upload --environment lilygo-t-display
+  platformio device monitor --environment lilygo-t-display
+  ```
+- Arduino IDE: uncomment the first line (`#include <Arduino.h>`), rename to `Gaszaehler.ino`.
 
-## Kompilieren
-Am einfachsten kann das Script mit VSCODE / PlatformIO genutzt werden. Dort einfach das Projekt importieren, WiFi und MQTT Angaben ergänzen und auf ein TTGO T-Display überspielen.
+## First-time setup (tzapu WiFiManager)
+- Power on the device; no known Wi-Fi starts the captive portal `GaszaehlerAP`.
+- Connect with phone/laptop to Wi-Fi `GaszaehlerAP` (open), the portal opens automatically (or browse to `192.168.4.1`).
+- Choose "Configure WiFi", enter your Wi-Fi SSID/password. Optional: set static IP (leave DHCP if unsure).
+- Save; the ESP32 reboots and joins your network. If it cannot connect, the portal reappears after timeout.
+- Later resets: press the lower button on the Wi-Fi TFT page to forget Wi-Fi/MQTT and reopen the portal.
 
-Eine Kompilierung mit der Arduino IDE ist auch möglich. Hierzu muss die erste Zeile auskommentiert werden (`#include <Arduino.h>`) und das Script in `Gaszaehler.ino` umbenannt werden.
+## Usage
+### TFT screens
+1) Gas: current total
 
-## Benutzung
-### Display
-Das Display kann 4 verschiedene Seiten anzeigen, welche mit dem oberen Taster durchgeschaltet werden:
+   <img src="img/screenshot01.png" width="240" alt="Gas screen">
 
-1. **Gaszähler**: Hier wird der aktuelle Zählerstand angezeigt.
+2) Wi-Fi: SSID/IP, reset Wi-Fi/MQTT via lower button; opens AP `Gaszaehler-AP`
 
-   <img src="img/screenshot01.png" width="240">
+   <img src="img/screenshot02.png" width="240" alt="Wi-Fi screen">
 
-2. **Wifi**: Hier wird die SSID des Wifi-Netzwerks sowie die aktuelle IP-Adresse angezeigt. Mit der unteren Taste können die Wifi-Einstellungen zurückgesetzt werden. Der ESP32-Gaszähler erstellt dann ein eigenes Wifi mit dem Namen "Gaszaehler-AP" (ohne Passwort). Hier kann dann das eigene Wifi-Netzwerk sowie der MQTT-Server eingetragen werden.
+3) MQTT: broker IP and device name
 
-   <img src="img/screenshot02.png" width="240">
+   <img src="img/screenshot03.png" width="240" alt="MQTT screen">
 
-3. **MQTT**: Hier wird die IP-Adresse des MQTT-Servers sowie der Gerätename des Gaszählers angezeigt. Der MQTT-Server kann derzeit nur über das Wifi-Captive Portal geändert werden.
+4) Misc: firmware version, entry to edit meter value
 
-   <img src="img/screenshot03.png" width="240">
+   <img src="img/screenshot04.png" width="240" alt="Misc screen">
 
-4. **Misc.**: Zeigt die Version des Gaszähler-Scripts und bietet die Möglichkeit, den Bildschirm zum Ändern des Gaszählerstands aufzurufen.
+5) Edit meter value locally (no MQTT required)
 
-   <img src="img/screenshot04.png" width="240">
+   <img src="img/screenshot05.png" width="240" alt="Edit meter screen">
 
-5. **Zählerstand anpassen**: Der Zählerstand kann ganz ohne MQTT auch direkt am Display eingestellt werden.
+### Web UI (served by the device)
+- Status card with MQTT state, uptime, current volume
+- Adjust meter value
+- MQTT settings (server/port/user/pass, clientID, topics), restart button, OTA upload
+- Language toggle EN/DE; default follows browser language
 
-   <img src="img/screenshot05.png" width="240">
+<img src="img/screenshotWeb01.png" width="320" alt="Web UI">
 
-### Zählerstand anpassen
-- Der aktuelle Gaszählerstand kann über das Topic `<GERÄTENAME>/gas_meter/currentVal` verändert werden.
- - Der aktuelle Gaszählerstand kann über das Topic `<GERÄTENAME>/measurement/current` verändert werden.
-- Alternativ mit der oberen Taste zum vierten Bildschirm wechseln und dort den Zählerstand verändern und speichern. Ein Abbrechen ist nicht möglich. Entweder korrekt erfassen oder den ESP32 reseten (Button/Strom).
+### HTTP API (local)
+- `GET /api/status` → JSON with MQTT/Wi-Fi state, topics, uptime, masked password, client ID, current reading.
+- `POST /api/consumption` with `value` (m3, comma or dot) → sets meter value and saves.
+- `POST /api/mqtt` with `server, port, username, password, clientid, topic, topic_current` → saves to SPIFFS, reconnects, republishes discovery.
+- `POST /api/restart` → replies then restarts the ESP32.
+- `POST /update` multipart form (field `firmware`) → OTA flash; device restarts on success.
 
-Der Gaszähler wird dann den internen Impulszähler auf "0" setzen und die folgenden Impulse zum gespeicherten Gaszählerwert addiert ausgeben.
+### MQTT topics
+- Human-readable: `<clientID>/<mqtt_topic_gas>` (default `measurement/gas`)
+- Numeric retained state: `<clientID>/<mqtt_topic_gas>/state` (e.g., `Gaszaehler_ABC/measurement/gas/state`)
+- Current value topic: `<clientID>/<mqtt_topic_current>` (default `measurement/current`)
+- Availability (retained): `<clientID>/availability` with `online`/`offline`
 
-### SPIFFS-Speicher
-In regelmäßigen Abständen wird der aktuelle Zählerstand sowie die Wifi- und MQTT-Konfigurationsdaten gespeichert. Das Speichern kann auf dem Startbildschirm auch mit dem unteren Button erzwungen werden.
+### Home Assistant
+- Discovery retained topics:
+  - `homeassistant/sensor/<clientID>_gas_volume/config` (total, `device_class: gas`, `state_class: total_increasing`)
+  - `homeassistant/sensor/<clientID>_current_value/config` (current, `device_class: gas`, `state_class: measurement`)
+- State topic in discovery points to `<clientID>/measurement/gas/state`
+- Availability wired to `<clientID>/availability`
 
-### MQTT
-Das Projekt nutzt MQTT zur Veröffentlichung von Gasverbrauchsdaten.
+### Edit meter value
+- Via MQTT: publish to `<clientID>/measurement/current` (or legacy `<clientID>/gas_meter/currentVal`)
+- Via display: go to “Edit meter value”, adjust, then save; cancels pulse counter to align with new offset.
 
-## TODO
-- Skript für Zähler mit 1000 Impulsen je m³-Gas anpassen
-- Bedienung überarbeiten
-- Layout überarbeiten?
-- Sicherheitsrückfrage bei Wifi/MQTT reset?
+### Persistence (SPIFFS)
+- Stored: pulse counter, offset, Wi-Fi/MQTT credentials, clientID, topic bases
+- Autosave interval and manual save via display button
 
-## Alternativen
-[ArduCounter](https://github.com/StefanStrobel/ArduCounter/) zählt an mehr als einem PIN, unterstützt auch das Display und ist stark mit FHEM (fhem.de) verknüpft. Leider keine Unterstützung für MQTT.
+## Alternatives
+[ArduCounter](https://github.com/StefanStrobel/ArduCounter/) counts on multiple pins, supports displays, and integrates with FHEM; does not natively support MQTT.

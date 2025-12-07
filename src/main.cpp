@@ -1,11 +1,12 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <PubSubClient.h>
+
 #include <WiFiManager.h>
 #include <Button2.h>
 #include <TFT_eSPI.h>
 #include <WebServer.h>
 #include <Update.h>
+#include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <sstream>
 #include <iomanip>
@@ -20,7 +21,7 @@
 SPIFFSManager spiffsManager;
 
 // Version
-const char *const version = "V 0.0.2";
+const char *const version = "V 0.1.0";
 
 // Pin definitions
 #define REED_PIN 32 // ADC1 pin
@@ -94,6 +95,7 @@ String clientID;
 
 // Forward declarations
 void publishHassDiscovery();
+void handleRestartRequest();
 
 void snapshotPersistentState()
 {
@@ -140,7 +142,6 @@ const char WEB_DASHBOARD[] PROGMEM = R"rawliteral(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gas Meter</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap');
 :root {
     --bg:#030712;
     --card:rgba(6,10,26,0.85);
@@ -154,33 +155,34 @@ body {
     margin:0;
     min-height:100vh;
     background:radial-gradient(circle at top,#1e293b,#020617 60%);
-    font-family:'Space Grotesk',sans-serif;
+    /* use system font stack to avoid external webfont fetch delays */
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color:var(--text);
     display:flex;
     justify-content:center;
-    padding:32px;
+    padding:12px;
 }
 main {
-    width:min(960px,100%);
+    width:min(720px,100%);
     display:grid;
-    gap:24px;
+    gap:18px;
 }
 .card {
     background:var(--card);
-    padding:24px;
-    border-radius:22px;
-    border:1px solid rgba(255,255,255,0.08);
-    box-shadow:0 30px 50px rgba(0,0,0,0.4);
+    padding:14px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,0.06);
+    box-shadow:0 18px 30px rgba(0,0,0,0.35);
 }
 .header h1 {
     margin:0;
-    font-size:2.4rem;
+    font-size:1.6rem;
 }
 .header p { color:var(--muted); }
 .status-dot {
     display:inline-block;
-    width:12px;
-    height:12px;
+    width:10px;
+    height:10px;
     border-radius:50%;
     margin-left:8px;
     background:#ef4444;
@@ -189,26 +191,26 @@ main {
 .muted { color:var(--muted); font-size:0.9rem; }
 form { display:flex; flex-direction:column; gap:12px; }
 label {
-    font-size:0.85rem;
+    font-size:0.78rem;
     letter-spacing:0.05em;
     text-transform:uppercase;
     color:var(--muted);
 }
 input {
-    padding:12px 14px;
-    border-radius:12px;
-    border:1px solid rgba(255,255,255,0.15);
-    background:rgba(255,255,255,0.04);
+    padding:10px 12px;
+    border-radius:8px;
+    border:1px solid rgba(255,255,255,0.12);
+    background:rgba(255,255,255,0.03);
     color:var(--text);
-    font-size:1rem;
+    font-size:0.95rem;
 }
 button {
     border:none;
     border-radius:999px;
-    padding:12px 20px;
-    font-size:1rem;
+    padding:10px 14px;
+    font-size:0.95rem;
     font-weight:600;
-    letter-spacing:0.03em;
+    letter-spacing:0.02em;
     color:#0f172a;
     cursor:pointer;
     background:linear-gradient(120deg,var(--accent),var(--accent-2));
@@ -217,12 +219,27 @@ button:disabled { opacity:0.4; cursor:not-allowed; }
 .feedback { min-height:1.2rem; font-size:0.85rem; color:var(--muted); }
 .grid-two {
     display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
-    gap:12px;
+    grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:8px;
+}
+/* Ensure grid children can shrink on very narrow screens and inputs don't overflow */
+.grid-two > div { min-width: 0; }
+input, select, textarea { width: 100%; box-sizing: border-box; }
+
+/* Mobile-specific: stack two-column grids and make buttons full-width */
+@media (max-width:480px) {
+    .grid-two { grid-template-columns: 1fr; gap:10px; }
+    button { width: 100%; }
+    input { font-size: 0.95rem; }
+    label { display:block; }
 }
 @media (max-width:768px) {
-    body { padding:16px; }
-    main { gap:18px; }
+    body { padding:10px; }
+    main { gap:14px; }
+    .card { padding:12px; }
+    .header h1 { font-size:1.4rem; }
+    input { font-size:0.95rem; }
+    button { padding:8px 12px; font-size:0.9rem; }
 }
 </style>
 </head>
@@ -249,7 +266,7 @@ button:disabled { opacity:0.4; cursor:not-allowed; }
         <h3 id="lbl-correct">Correct meter reading</h3>
         <form id="consumption-form">
             <label for="consumption" id="lbl-new-val">New value (m³)</label>
-            <input type="number" step="0.01" min="0" id="consumption" name="value" required>
+            <input type="text" inputmode="decimal" pattern="[0-9]+([\\.,][0-9]{1,2})?" id="consumption" name="value" required>
             <button type="submit" id="btn-save">Save</button>
             <span class="feedback" id="consumption-feedback"></span>
         </form>
@@ -270,11 +287,11 @@ button:disabled { opacity:0.4; cursor:not-allowed; }
             <div class="grid-two">
                 <div>
                     <label for="mqtt-user">User</label>
-                    <input type="text" id="mqtt-user" name="username">
+                    <input type="text" id="mqtt-user" name="username" autocomplete="username">
                 </div>
                 <div>
                     <label for="mqtt-password">Passwort</label>
-                    <input type="password" id="mqtt-password" name="password">
+                    <input type="password" id="mqtt-password" name="password" autocomplete="off">
                 </div>
             </div>
             <div class="grid-two">
@@ -288,11 +305,11 @@ button:disabled { opacity:0.4; cursor:not-allowed; }
                 </div>
             </div>
             <div class="grid-two">
+                <div></div>
                 <div>
                     <label for="mqtt-topic-current">Topic (current)</label>
                     <input type="text" id="mqtt-topic-current" name="topic_current" placeholder="measurement/current">
                 </div>
-                <div></div>
             </div>
             <button type="submit" id="btn-apply">Apply & Connect</button>
             <span class="feedback" id="mqtt-feedback"></span>
@@ -307,6 +324,12 @@ button:disabled { opacity:0.4; cursor:not-allowed; }
             <span class="feedback" id="ota-feedback"></span>
         </form>
     </section>
+    <section class="card">
+        <h3 id="lbl-restart">Device Control</h3>
+        <p class="muted" id="restart-desc">Remote restart of the device (will reconnect to WiFi/MQTT on boot)</p>
+        <button id="btn-restart">Restart Device</button>
+        <span class="feedback" id="restart-feedback"></span>
+    </section>
 </main>
 <script>
 const volumeEl = document.getElementById('volume');
@@ -320,6 +343,8 @@ const mqttForm = document.getElementById('mqtt-form');
 const mqttFeedback = document.getElementById('mqtt-feedback');
 const otaForm = document.getElementById('ota-form');
 const otaFeedback = document.getElementById('ota-feedback');
+const restartBtn = document.getElementById('btn-restart');
+const restartFeedback = document.getElementById('restart-feedback');
 
 const nf = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -333,9 +358,11 @@ async function refreshStatus() {
         const lastAttempt = data.mqttLastAttemptUptime || 0;
         mqttInfo.textContent = `${data.mqttServer}:${data.mqttPort} · ${data.mqttLastStatus} · last try ${lastAttempt}s · Topic ${data.mqttTopicGas}`;
         uptimeEl.textContent = `Uptime: ${formatUptime(data.uptimeSeconds)}`;
-        consumptionInput.placeholder = nf.format(data.gasVolumeM3 || 0);
-        if (!consumptionInput.value) {
-            consumptionInput.value = nf.format(data.gasVolumeM3 || 0);
+        const formattedVolume = nf.format(data.gasVolumeM3 || 0);
+        consumptionInput.placeholder = formattedVolume;
+        // Prefill with current value if empty or if not focused, to keep the latest reading visible
+        if (!consumptionInput.value || document.activeElement !== consumptionInput) {
+            consumptionInput.value = formattedVolume;
         }
         // Only update form fields if the user is not currently editing them
         if (document.activeElement !== mqttForm.server) mqttForm.server.value = data.mqttServer || '';
@@ -348,7 +375,7 @@ async function refreshStatus() {
         if (document.activeElement !== mqttForm.topic) mqttForm.topic.value = data.mqttTopicBase || '';
         if (document.activeElement !== mqttForm.topic_current) mqttForm.topic_current.value = data.mqttTopicCurrentBase || '';
     } catch (error) {
-        mqttInfo.textContent = 'Status not available';
+        mqttInfo.textContent = t('statusUnavailable');
     }
 }
 
@@ -365,25 +392,52 @@ const translations = {
         saved: 'Saved',
         mqttApplying: 'Applying new parameters...',
         otaUploading: 'Upload in progress...',
-        otaNoFile: 'Please select a firmware file.'
+        otaNoFile: 'Please select a firmware file.',
+        connected: 'Connected.',
+        settingsSavedAttempting: 'Settings saved, attempting connection...',
+        statusUnavailable: 'Status not available',
+        restartPrompt: 'Restart device?',
+        restarting: 'Restarting...',
+        restartDesc: 'Remote restart of the device (will reconnect to WiFi/MQTT on boot)'
     },
     de: {
         consuming: 'Wird übertragen...',
         saved: 'Gespeichert',
         mqttApplying: 'Neue Parameter werden übernommen...',
         otaUploading: 'Upload läuft...',
-        otaNoFile: 'Bitte eine Firmware auswählen.'
+        otaNoFile: 'Bitte eine Firmware auswählen.',
+        connected: 'Verbunden.',
+        settingsSavedAttempting: 'Einstellungen gespeichert, Verbinden...',
+        statusUnavailable: 'Status nicht verfügbar',
+        restartPrompt: 'Gerät neu starten?',
+        restarting: 'Neustart läuft...',
+        restartDesc: 'Neustart des Geräts (verbindet sich danach wieder mit WiFi/MQTT)'
     }
 };
-let currentLang = 'en';
+// Pick saved language or fallback to browser preference
+let currentLang = localStorage.getItem('lang') || ((navigator.language || 'en').toLowerCase().startsWith('de') ? 'de' : 'en');
 
+// Call this function to change language and persist preference
+function setLang(lang) {
+    if (translations[lang]) {
+        currentLang = lang;
+        localStorage.setItem('lang', lang);
+    }
+}
+/**
+ * Returns the translated string for the given key based on the current language.
+ * Falls back to English if the key is not found in the selected language.
+ * @param {string} key - Translation key to lookup
+ * @returns {string} - Translated string
+ */
 function t(key) {
     return translations[currentLang][key] || translations['en'][key] || '';
 }
-
 consumptionForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const value = consumptionInput.value;
+    const raw = consumptionInput.value.trim();
+    const normalized = raw.replace(',', '.');
+    const value = normalized;
     consumptionFeedback.textContent = t('consuming');
     try {
         const body = new URLSearchParams({ value });
@@ -422,9 +476,9 @@ mqttForm.addEventListener('submit', async (event) => {
         if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.json();
         if (data.mqttConnected) {
-            mqttFeedback.textContent = 'Connected.';
+            mqttFeedback.textContent = t('connected');
         } else {
-            mqttFeedback.textContent = data.mqttLastStatus || 'Settings saved, attempting connection...';
+            mqttFeedback.textContent = data.mqttLastStatus || t('settingsSavedAttempting');
         }
         await refreshStatus();
     } catch (error) {
@@ -455,6 +509,20 @@ otaForm.addEventListener('submit', async (event) => {
     }
 });
 
+// Restart button handler
+restartBtn.addEventListener('click', async () => {
+    if (!confirm(t('restartPrompt'))) return;
+    restartFeedback.textContent = t('restarting');
+    try {
+        const response = await fetch('/api/restart', { method: 'POST' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = await response.json();
+        restartFeedback.textContent = data.message || t('restarting');
+    } catch (error) {
+        restartFeedback.textContent = 'Error: ' + error.message;
+    }
+});
+
 // Language toggle handlers
 document.getElementById('lang-en').addEventListener('click', () => { setLanguage('en'); });
 document.getElementById('lang-de').addEventListener('click', () => { setLanguage('de'); });
@@ -472,6 +540,9 @@ function setLanguage(lang) {
         document.getElementById('lbl-ota').textContent = 'OTA Update';
         document.getElementById('lbl-fw').textContent = 'Firmware (.bin)';
         document.getElementById('btn-upload').textContent = 'Upload & Flash';
+        document.getElementById('lbl-restart').textContent = 'Device Control';
+        document.getElementById('btn-restart').textContent = 'Restart Device';
+        document.getElementById('restart-desc').textContent = t('restartDesc');
     } else {
         document.getElementById('hdr-title').textContent = 'Gaszähler';
         document.getElementById('hdr-sub').textContent = 'Live-Status & Steuerung';
@@ -483,11 +554,14 @@ function setLanguage(lang) {
         document.getElementById('lbl-ota').textContent = 'OTA Update';
         document.getElementById('lbl-fw').textContent = 'Firmware (.bin)';
         document.getElementById('btn-upload').textContent = 'Upload & Flash';
+        document.getElementById('lbl-restart').textContent = 'Gerätsteuerung';
+        document.getElementById('btn-restart').textContent = 'Neustart';
+        document.getElementById('restart-desc').textContent = t('restartDesc');
     }
 }
 
-// Initialize language to English
-setLanguage('en');
+    // Initialize language based on browser preference (de -> German, else English)
+    setLanguage(currentLang);
 
 refreshStatus();
 setInterval(refreshStatus, 5000);
@@ -545,11 +619,14 @@ void setup()
     wm.addParameter(&custom_mqtt_server);
     wm.addParameter(&custom_mqtt_port);
     wm.addParameter(&custom_mqtt_user);
-    wm.addParameter(&custom_mqtt_password);
+    client.setBufferSize(MQTT_MAX_PACKET_SIZE);
 
     wm.setConfigPortalBlocking(false);
     wm.setSaveParamsCallback(WMsaveParamsCallback);
     wm.setConfigPortalTimeout(60);
+
+    // Allow larger MQTT messages (e.g., HA discovery payloads)
+    client.setBufferSize(1024);
 
     if (wm.autoConnect("GaszaehlerAP"))
     {
@@ -706,14 +783,35 @@ boolean reconnect_mqtt()
 
     // Attempt MQTT connect (with Last Will set to 'offline' on availability topic)
     String availTopic = clientID + "/availability";
-    if (client.connect(clientID.c_str(), mqtt_user, mqtt_password, availTopic.c_str(), 0, true, "offline"))
+
+    // Non-blocking wait for 50ms to allow broker to process connection
+    unsigned long waitStart = millis();
+    while (millis() - waitStart < 50)
+    {
+        client.loop();
+        delay(1);
+    }
+
+    // Attempt MQTT connect with LWT
+    bool connected = client.connect(
+        clientID.c_str(),
+        strlen(mqtt_user) ? mqtt_user : nullptr,
+        strlen(mqtt_password) ? mqtt_password : nullptr,
+        availTopic.c_str(),
+        1,
+        true,
+        "offline");
+
+    if (connected)
     {
         lastMqttStatus = "connected";
         lastMqttErrorCode = 0;
         Serial.printf("MQTT connected to %s\n", mqtt_server);
+        client.publish(availTopic.c_str(), "online", true);
+        client.loop();
+        delay(50);
         String mqttTopic = clientID + "/" + mqtt_topic_currentVal;
         client.subscribe(mqttTopic.c_str());
-        // Publish discovery and availability
         publishHassDiscovery();
     }
     else
@@ -791,6 +889,8 @@ void publishHassDiscovery()
         doc["unit_of_measurement"] = "m³";
         doc["value_template"] = "{{ value | float }}";
         doc["state_class"] = "total_increasing";
+        doc["device_class"] = "gas";
+        doc["icon"] = "mdi:fire";
         doc["availability_topic"] = availTopic;
         doc["device"] = device;
 
@@ -812,6 +912,8 @@ void publishHassDiscovery()
         doc["unit_of_measurement"] = "m³";
         doc["value_template"] = "{{ value | float }}";
         doc["state_class"] = "measurement";
+        doc["device_class"] = "gas";
+        doc["icon"] = "mdi:fire";
         doc["availability_topic"] = availTopic;
         doc["device"] = device;
 
@@ -1276,6 +1378,7 @@ void setupWebInterface()
     webServer.on("/", HTTP_GET, handleRootRequest);
     webServer.on("/api/status", HTTP_GET, handleStatusRequest);
     webServer.on("/api/consumption", HTTP_POST, handleConsumptionUpdate);
+    webServer.on("/api/restart", HTTP_POST, handleRestartRequest);
     webServer.on("/api/mqtt", HTTP_POST, handleMqttConfigUpdate);
     webServer.on("/update", HTTP_POST,
                  []()
@@ -1298,4 +1401,16 @@ void setupWebInterface()
                          { webServer.send(404, "application/json", "{\"error\":\"not found\"}"); });
     webServer.begin();
     Serial.println("HTTP dashboard available on http://" + WiFi.localIP().toString());
+}
+
+void handleRestartRequest()
+{
+    DynamicJsonDocument doc(128);
+    doc["status"] = "restarting";
+    doc["message"] = "Device will restart now";
+    String payload;
+    serializeJson(doc, payload);
+    webServer.send(200, "application/json", payload);
+    delay(150);
+    ESP.restart();
 }
