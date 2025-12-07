@@ -1,5 +1,7 @@
 # Gas Meter (ESP32 TTGO T-Display)
 
+> ⚠️ **Important Notice: This project contains substantial AI-generated code.** Review, test, and audit all firmware, web UI, and documentation before using it in production or safety-relevant contexts. Treat defaults and generated logic as untrusted until verified.
+
 An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G4), counts pulses and publishes consumption via MQTT. It provides a small web UI (English/German), Home Assistant MQTT discovery (retained), and persists Wi-Fi/MQTT settings plus counter state in SPIFFS.
 
 3D-printed enclosure by 3dFabrik: [Thingiverse](https://www.thingiverse.com/thing:5594161)
