@@ -6,6 +6,7 @@
 #include <TFT_eSPI.h>
 #include <WebServer.h>
 #include <Update.h>
+#include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <sstream>
 #include <iomanip>
@@ -777,23 +778,35 @@ boolean reconnect_mqtt()
 
     // Attempt MQTT connect (with Last Will set to 'offline' on availability topic)
     String availTopic = clientID + "/availability";
-        // Non-blocking wait for 50ms to allow broker to process connection
-        unsigned long waitStart = millis();
-        while (millis() - waitStart < 50) {
-            client.loop();
-            // Optionally yield to allow other tasks to run
-            delay(1);
-        }
+
+    // Non-blocking wait for 50ms to allow broker to process connection
+    unsigned long waitStart = millis();
+    while (millis() - waitStart < 50)
+    {
+        client.loop();
+        delay(1);
+    }
+
+    // Attempt MQTT connect with LWT
+    bool connected = client.connect(
+        clientID.c_str(),
+        strlen(mqtt_user) ? mqtt_user : nullptr,
+        strlen(mqtt_password) ? mqtt_password : nullptr,
+        availTopic.c_str(),
+        1,
+        true,
+        "offline");
+
+    if (connected)
     {
         lastMqttStatus = "connected";
         lastMqttErrorCode = 0;
         Serial.printf("MQTT connected to %s\n", mqtt_server);
-        // Give the broker a short moment before sending retained discovery publishes
+        client.publish(availTopic.c_str(), "online", true);
         client.loop();
         delay(50);
         String mqttTopic = clientID + "/" + mqtt_topic_currentVal;
         client.subscribe(mqttTopic.c_str());
-        // Publish discovery and availability
         publishHassDiscovery();
     }
     else
