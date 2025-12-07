@@ -304,7 +304,7 @@ input, select, textarea { width: 100%; box-sizing: border-box; }
                     <input type="text" id="mqtt-topic" name="topic" placeholder="measurement/gas">
                 </div>
             </div>
-            <div class="grid-two">              
+            <div class="grid-two">
                 <div></div>
                 <div>
                     <label for="mqtt-topic-current">Topic (current)</label>
@@ -424,6 +424,12 @@ function setLang(lang) {
         localStorage.setItem('lang', lang);
     }
 }
+/**
+ * Returns the translated string for the given key based on the current language.
+ * Falls back to English if the key is not found in the selected language.
+ * @param {string} key - Translation key to lookup
+ * @returns {string} - Translated string
+ */
 function t(key) {
     return translations[currentLang][key] || translations['en'][key] || '';
 }
