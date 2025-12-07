@@ -33,7 +33,8 @@ bool SPIFFSManager::mountSPIFFS()
 
 bool SPIFFSManager::saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password, char *mqtt_clientid, char *mqtt_topic_gas, char *mqtt_topic_current)
 {
-    File file = SPIFFS.open(DATA_FILE, FILE_WRITE);
+    // Open in write mode and truncate to avoid stale JSON fragments
+    File file = SPIFFS.open(DATA_FILE, "w"); // truncate + write
     if (!file)
     {
         Serial.println("Error opening file for writing");
@@ -90,15 +91,27 @@ bool SPIFFSManager::loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_
         return false;
     }
 
-    pulseCount = doc["count"].as<uint32_t>();
-    offset = doc["offset"].as<uint32_t>();
-    strlcpy(mqtt_server, doc["mqtt_server"] | "", 40);
-    strlcpy(mqtt_port, doc["mqtt_port"] | "", 6);
-    strlcpy(mqtt_user, doc["mqtt_user"] | "", 40);
-    strlcpy(mqtt_password, doc["mqtt_password"] | "", 40);
-    strlcpy(mqtt_clientid, doc["mqtt_clientid"] | "", 64);
-    strlcpy(mqtt_topic_gas, doc["mqtt_topic_gas"] | "", 64);
-    strlcpy(mqtt_topic_current, doc["mqtt_topic_current"] | "", 64);
+    // Only overwrite fields when present and non-empty; otherwise keep existing defaults
+    if (doc.containsKey("count"))
+        pulseCount = doc["count"].as<uint32_t>();
+    if (doc.containsKey("offset"))
+        offset = doc["offset"].as<uint32_t>();
+
+    auto copyIfSet = [](JsonVariantConst v, char *dest, size_t len) {
+        const char *val = v.isNull() ? nullptr : v.as<const char *>();
+        if (val && strlen(val) > 0)
+        {
+            strlcpy(dest, val, len);
+        }
+    };
+
+    copyIfSet(doc["mqtt_server"], mqtt_server, 40);
+    copyIfSet(doc["mqtt_port"], mqtt_port, 6);
+    copyIfSet(doc["mqtt_user"], mqtt_user, 40);
+    copyIfSet(doc["mqtt_password"], mqtt_password, 40);
+    copyIfSet(doc["mqtt_clientid"], mqtt_clientid, 64);
+    copyIfSet(doc["mqtt_topic_gas"], mqtt_topic_gas, 64);
+    copyIfSet(doc["mqtt_topic_current"], mqtt_topic_current, 64);
     
     Serial.printf(" < Meter reading: %i\n", pulseCount);
     Serial.printf(" < Offset: %i\n", offset);

@@ -267,7 +267,7 @@ input, select, textarea { width: 100%; box-sizing: border-box; }
         <form id="consumption-form">
             <label for="consumption" id="lbl-new-val">New value (m³)</label>
             <input type="text" inputmode="decimal" pattern="[0-9]+([\\.,][0-9]{1,2})?" id="consumption" name="value" required>
-            <input type="number" step="0.01" id="consumption" name="value" required>
+            <button type="submit" id="btn-save">Save</button>
             <span class="feedback" id="consumption-feedback"></span>
         </form>
     </section>
@@ -288,11 +288,11 @@ input, select, textarea { width: 100%; box-sizing: border-box; }
                 <div>
                     <label for="mqtt-user">User</label>
                     <input type="text" id="mqtt-user" name="username" autocomplete="username">
-                    <input type="text" id="mqtt-user" name="username" autocomplete="off">
                 </div>
                 <div>
                     <label for="mqtt-password">Passwort</label>
                     <input type="password" id="mqtt-password" name="password" autocomplete="off">
+                </div>
             </div>
             <div class="grid-two">
                 <div>
@@ -304,12 +304,12 @@ input, select, textarea { width: 100%; box-sizing: border-box; }
                     <input type="text" id="mqtt-topic" name="topic" placeholder="measurement/gas">
                 </div>
             </div>
-            <div class="grid-two">
+            <div class="grid-two">              
+                <div></div>
                 <div>
                     <label for="mqtt-topic-current">Topic (current)</label>
                     <input type="text" id="mqtt-topic-current" name="topic_current" placeholder="measurement/current">
                 </div>
-                <div></div>
             </div>
             <button type="submit" id="btn-apply">Apply & Connect</button>
             <span class="feedback" id="mqtt-feedback"></span>
@@ -414,8 +414,7 @@ const translations = {
         restartDesc: 'Neustart des Geräts (verbindet sich danach wieder mit WiFi/MQTT)'
     }
 };
-let currentLang = (navigator.language || 'en').toLowerCase().startsWith('de') ? 'de' : 'en';
-// Load language preference from localStorage, or use browser language
+// Pick saved language or fallback to browser preference
 let currentLang = localStorage.getItem('lang') || ((navigator.language || 'en').toLowerCase().startsWith('de') ? 'de' : 'en');
 
 // Call this function to change language and persist preference
@@ -425,9 +424,9 @@ function setLang(lang) {
         localStorage.setItem('lang', lang);
     }
 }
+function t(key) {
     return translations[currentLang][key] || translations['en'][key] || '';
 }
-
 consumptionForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const raw = consumptionInput.value.trim();
