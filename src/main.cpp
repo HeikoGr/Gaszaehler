@@ -914,7 +914,7 @@ void publishHassDiscovery()
         doc["state_topic"] = currentTopic;
         doc["unit_of_measurement"] = "m³";
         doc["value_template"] = "{{ value | float }}";
-        doc["state_class"] = "measurement";
+        doc["state_class"] = "total_increasing";
         doc["device_class"] = "gas";
         doc["icon"] = "mdi:fire";
         doc["availability_topic"] = availTopic;

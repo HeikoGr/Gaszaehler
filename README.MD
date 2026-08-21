@@ -98,7 +98,7 @@ Wiring note: Reed contact to 3.3 V; GPIO32 pulled down with 1 kΩ. On rising edg
 ### Home Assistant
 - Discovery retained topics:
   - `homeassistant/sensor/<clientID>_gas_volume/config` (total, `device_class: gas`, `state_class: total_increasing`)
-  - `homeassistant/sensor/<clientID>_current_value/config` (current, `device_class: gas`, `state_class: measurement`)
+  - `homeassistant/sensor/<clientID>_current_value/config` (current, `device_class: gas`, `state_class: total_increasing`)
 - State topic in discovery points to `<clientID>/measurement/gas/state`
 - Availability wired to `<clientID>/availability`
 
