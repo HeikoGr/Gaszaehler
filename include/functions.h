@@ -11,7 +11,6 @@ String formatVolume(uint32_t value);
 void publishGasVolume();
 void saveDataToSPIFFS();
 void updateDisplay();
-void captureAndSendScreenshotRLE(TFT_eSPI &tft);
 void incrementDigit();
 void moveCursor();
 void handleButton1Click(Button2 &btn);

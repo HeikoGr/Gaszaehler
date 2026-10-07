@@ -10,7 +10,7 @@
 #include <ArduinoJson.h>
 
 // own files
-#include "icons.h"
+#include "Ui.h"
 #include "SPIFFSManager.h"
 #include "functions.h" // Include the header file
 #include "screenshot.h"
@@ -21,7 +21,7 @@
 SPIFFSManager spiffsManager;
 
 // Version
-const char *const version = "V 0.1.1";
+const char *const version = "V 0.2.0";
 
 // Pin definitions
 #define REED_PIN 32 // ADC1 pin
@@ -48,6 +48,9 @@ char mqtt_server[40] = "";
 char mqtt_port[6] = "1883";
 char mqtt_user[40] = "";
 char mqtt_password[40] = "";
+// Name of the WiFiManager config portal access point
+const char *const AP_NAME = "GaszaehlerAP";
+
 // Optional password for the web dashboard and OTA (user "admin"); empty = no login
 char web_password[40] = "";
 const char *const WEB_USER = "admin";
@@ -89,8 +92,19 @@ char prevWebPassword[40];
 
 // set gas meter manually
 long number = 0; // Use long for a larger value range
-int cursorPosition = 0;
-const int maxDigits = 9; // 6 Vorkomma + Dezimalpunkt + 2 Nachkomma
+int cursorPosition = 0; // 0..7 digits, then UI_EDIT_SAVE, UI_EDIT_CANCEL
+
+// Pulse timing for the flow estimate on the display
+unsigned long lastPulseMillis = 0;
+unsigned long lastPulseInterval = 0;
+bool pulseSeen = false;
+constexpr unsigned long FLOW_TIMEOUT = 15 * 60 * 1000; // no pulse for 15 min = no flow
+constexpr unsigned long DISPLAY_REFRESH_INTERVAL = 30 * 1000;
+unsigned long lastDisplayUpdate = 0;
+bool prevPortalActive = false;
+
+// Display: everything is drawn into a RAM framebuffer (lib/ui) and pushed in one go -> no flicker
+uint16_t *frameBuffer = nullptr;
 
 // Display
 TFT_eSPI tft = TFT_eSPI();
@@ -221,11 +235,18 @@ void setup()
     // Initialize display first so the user sees something while Wi-Fi connects
     tft.init();
     tft.setRotation(1);
+    tft.setSwapBytes(true); // framebuffer holds native-endian RGB565
     tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.setTextSize(2);
-    tft.setCursor(2, 35);
-    tft.print("Connecting WiFi...");
+    frameBuffer = static_cast<uint16_t *>(malloc(UI_WIDTH * UI_HEIGHT * sizeof(uint16_t)));
+    if (frameBuffer)
+    {
+        UiState boot;
+        boot.screen = Screen::Boot;
+        boot.version = version;
+        Canvas canvas(frameBuffer, UI_WIDTH, UI_HEIGHT);
+        renderUi(canvas, boot);
+        tft.pushImage(0, 0, UI_WIDTH, UI_HEIGHT, frameBuffer);
+    }
 
     // Initialize SPIFFS
     if (spiffsManager.begin())
@@ -280,7 +301,7 @@ void setup()
     // Allow larger MQTT messages (e.g., HA discovery payloads)
     client.setBufferSize(1024);
 
-    if (wm.autoConnect("GaszaehlerAP"))
+    if (wm.autoConnect(AP_NAME))
     {
         Serial.println("connected...yeey :)");
         timeStamps.lastWiFiconnectTime = millis();
@@ -323,13 +344,16 @@ void loop()
         timeStamps.lastWiFiconnectTime = millis();
     }
 
-    if (connectionStatus.wifiConnected != connectionStatus.prevWifiStatus || connectionStatus.mqttConnected != connectionStatus.prevMqttStatus)
-    {
-        updateDisplay();
-    }
-
     wm.process();
     updateWebServer();
+
+    bool portalActive = wm.getConfigPortalActive();
+    if (connectionStatus.wifiConnected != connectionStatus.prevWifiStatus || connectionStatus.mqttConnected != connectionStatus.prevMqttStatus ||
+        portalActive != prevPortalActive || millis() - lastDisplayUpdate >= DISPLAY_REFRESH_INTERVAL)
+    {
+        prevPortalActive = portalActive;
+        updateDisplay();
+    }
 
     // Check MQTT connection
     if (connectionStatus.wifiConnected && !connectionStatus.mqttConnected && millis() - timeStamps.lastMQTTreconnectTime >= MQTT_RECONNECT_INTERVAL)
@@ -355,6 +379,10 @@ void loop()
             Serial.printf("Pulse registered.\n");
             lastState = true;
             pulseCount++;
+            unsigned long now = millis();
+            lastPulseInterval = pulseSeen ? now - lastPulseMillis : 0;
+            lastPulseMillis = now;
+            pulseSeen = true;
             updateDisplay();
         }
     }
@@ -618,111 +646,56 @@ String formatVolume(uint32_t value)
     return String(buf);
 }
 
-void drawStatusBar(const String &title)
+// Estimated flow in liters per hour (one pulse = 0.01 m3 = 10 l)
+uint32_t currentFlowLitersPerHour()
 {
-    tft.fillRect(0, 0, 240, 27, TFT_DARKGREY);  // Status bar
-    tft.fillRect(0, 115, 240, 1, TFT_DARKGREY); // Accent line
-    tft.setCursor(2, 3);
-    tft.setTextColor(TFT_BLACK, TFT_DARKGREY);
-    tft.setTextSize(3);
-    tft.print(title);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.setTextSize(2);
-}
-
-void drawWifiStatus()
-{
-    bool wifiConnected = (WiFi.status() == WL_CONNECTED);
-    uint16_t wifiColor = wifiConnected ? TFT_GREEN : TFT_RED;
-    tft.fillRect(188, 1, 24, 24, wifiColor);
-    tft.pushImage(188, 1, 24, 24, wifiIcon, TFT_WHITE);
-    connectionStatus.prevWifiStatus = wifiConnected; // Update previous status
-}
-
-void drawMqttStatus()
-{
-    bool mqttConnected = client.connected();
-    uint16_t mqttColor = mqttConnected ? TFT_GREEN : TFT_RED;
-    tft.fillRect(215, 1, 24, 24, mqttColor);
-    tft.pushImage(215, 1, 24, 24, mqttIcon, TFT_WHITE);
-    connectionStatus.prevMqttStatus = mqttConnected; // Update previous status
+    if (!pulseSeen || lastPulseInterval == 0)
+        return 0;
+    unsigned long sinceLast = millis() - lastPulseMillis;
+    if (sinceLast > FLOW_TIMEOUT)
+        return 0;
+    // If the current gap is already longer than the last interval, the flow has slowed down
+    unsigned long interval = max(lastPulseInterval, sinceLast);
+    return static_cast<uint32_t>(10ULL * 3600000ULL / interval);
 }
 
 void updateDisplay()
 {
-    String title, line1, line2, actionBtn2 = "";
-    switch (displayMode)
-    {
-    case 1:
-        title = "Wifi";
-        line1 = "SSID:\n " + WiFi.SSID();
-        line2 = "IP address:\n " + WiFi.localIP().toString();
-        if (wifiResetRequestTime != 0 && millis() - wifiResetRequestTime < WIFI_RESET_CONFIRM_WINDOW)
-            actionBtn2 = "press again: reset >";
-        else
-            actionBtn2 = "        reset wifi >";
-        break;
-    case 2:
-        title = "MQTT";
-        line1 = "IP :\n " + String(mqtt_server);
-        line2 = "device name :\n " + clientID;
-        break;
-    case 3:
-        title = "misc.";
-        line1 = "Version: " + String(version);
-        line2 = "";
-        actionBtn2 = " edit meter value >";
-        break;
-    case 4:
-        tft.fillScreen(TFT_BLACK);
-        tft.setCursor(0, 10);
-        tft.print("             next >");
-        tft.setCursor(30, 60);
-
-        char buffer[24];
-        snprintf(buffer, sizeof(buffer), "%06ld.%02ld  save", number / 100, number % 100);
-        tft.print(buffer);
-
-        // show cursor
-        int xPos;
-        xPos = 30 + cursorPosition * 12;
-        if (cursorPosition == 8)
-        {
-            xPos += 36; // For the decimal point
-            tft.drawRect(xPos, 77, 46, 2, TFT_RED);
-            tft.setCursor(0, 120);
-            tft.print("             save >");
-            return;
-        }
-        else if (cursorPosition > 5)
-        {
-            xPos += 12; // For the decimal point
-        }
-        tft.drawRect(xPos, 77, 10, 2, TFT_RED);
-        tft.setCursor(0, 120);
-        tft.print("               +1 >");
+    lastDisplayUpdate = millis();
+    if (!frameBuffer)
         return;
-        break;
-    default:
-        gasVolume = pulseCount + offset;
-        title = "gas meter";
-        line1 = "value: " + formatVolume(gasVolume) + " m3";
-        actionBtn2 = "             save >";
-        break;
-    }
 
-    tft.setCursor(0, 28);
-    tft.fillScreen(TFT_BLACK);
-    drawStatusBar(title);
-    drawWifiStatus();
-    drawMqttStatus();
+    static const Screen screens[] = {Screen::Gas, Screen::Wifi, Screen::Mqtt, Screen::Info, Screen::Edit};
+    static String ssid, ip;
+    ssid = WiFi.SSID();
+    ip = WiFi.localIP().toString();
 
-    tft.setCursor(2, 35);
-    tft.print(line1);
-    tft.setCursor(2, 75);
-    tft.print(line2);
-    tft.setCursor(0, 120);
-    tft.print(actionBtn2);
+    UiState s;
+    s.screen = wm.getConfigPortalActive() ? Screen::Portal : screens[constrain(displayMode, 0, 4)];
+    s.wifiConnected = (WiFi.status() == WL_CONNECTED);
+    s.mqttConnected = client.connected();
+    s.volume = pulseCount + offset;
+    s.flowLitersPerHour = currentFlowLitersPerHour();
+    s.secondsSinceLastPulse = pulseSeen ? (millis() - lastPulseMillis) / 1000 : UI_NO_PULSE;
+    s.ssid = ssid.c_str();
+    s.ip = ip.c_str();
+    s.rssi = WiFi.RSSI();
+    s.wifiResetPending = wifiResetRequestTime != 0 && millis() - wifiResetRequestTime < WIFI_RESET_CONFIRM_WINDOW;
+    s.mqttServer = mqtt_server;
+    s.mqttPort = mqtt_port;
+    s.clientId = clientID.c_str();
+    s.mqttStatus = lastMqttStatus.c_str();
+    s.version = version;
+    s.uptimeSeconds = millis() / 1000;
+    s.pulseCount = pulseCount;
+    s.editValue = number;
+    s.editCursor = cursorPosition;
+    s.apName = AP_NAME;
+    s.apIp = "192.168.4.1";
+
+    Canvas canvas(frameBuffer, UI_WIDTH, UI_HEIGHT);
+    renderUi(canvas, s);
+    tft.pushImage(0, 0, UI_WIDTH, UI_HEIGHT, frameBuffer);
 }
 
 void incrementDigit()
@@ -742,7 +715,7 @@ void incrementDigit()
 
 void moveCursor()
 {
-    cursorPosition = (cursorPosition + 1) % maxDigits;
+    cursorPosition = (cursorPosition + 1) % UI_EDIT_POSITIONS;
     updateDisplay();
 }
 
@@ -785,17 +758,23 @@ void handleButton2Click(Button2 &btn)
         updateDisplay();
         break;
     case 3:
+        number = min(pulseCount + offset, MAX_METER_VALUE);
+        cursorPosition = 0;
         displayMode = 4;
         updateDisplay();
         break;
     case 4:
-        if (cursorPosition == 8)
+        if (cursorPosition == UI_EDIT_SAVE)
         {
             pulseCount = 0;
             offset = number;
             displayMode = 0;
             saveDataToSPIFFS();
             publishGasVolume();
+        }
+        else if (cursorPosition == UI_EDIT_CANCEL)
+        {
+            displayMode = 3;
         }
         else
         {
@@ -814,7 +793,8 @@ void handleButton2Click(Button2 &btn)
 void handleButton2LongPress(Button2 &btn)
 {
     Serial.println("Button 2 long press detected");
-    captureAndSendScreenshotRLE(tft);
+    if (frameBuffer)
+        captureAndSendScreenshotRLE(frameBuffer, UI_WIDTH, UI_HEIGHT);
 }
 
 // Callback function for saving WiFiManager parameters
