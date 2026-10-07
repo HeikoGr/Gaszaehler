@@ -100,12 +100,12 @@ namespace
 
     void publishDiscovery()
     {
-        String stateTopic = topic(settings.topicGas) + "/state";
+        String stateTopic = topic(settings.topicGas);
         String availability = topic("availability");
 
         JsonDocument device;
         device["name"] = settings.clientId;
-        device["sw_version"] = FIRMWARE_VERSION;
+        device["sw_version"] = firmwareVersionLong();
         device["identifiers"].to<JsonArray>().add(settings.clientId);
         device["model"] = "Gaszaehler";
         device["manufacturer"] = "DIY";
@@ -225,6 +225,8 @@ namespace mqtt
             client.subscribe(correctionTopic, 1);
             publishDiscovery();
             publishState();
+            // Remove the retained "<topic>/state" of firmware 0.0.2 - 0.3.0
+            publish(topic(settings.topicGas) + "/state", "", true);
             app::requestDisplayUpdate();
         }
         if (correction)
@@ -261,11 +263,8 @@ namespace mqtt
             return;
         char value[16];
         formatVolume(value, sizeof(value), meter::total());
-        String base = topic(settings.topicGas);
         // retained, so Home Assistant has the value immediately after its own restart
-        publish(base + "/state", value, true);
-        // same value without retain, kept for setups of firmware <= 0.0.1
-        publish(base, value, false);
+        publish(topic(settings.topicGas), value, true);
     }
 
     void reconfigure(const char *oldClientId)

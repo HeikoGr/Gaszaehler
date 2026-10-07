@@ -7,6 +7,9 @@ An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G
 3D-printed enclosure by 3dFabrik: [Thingiverse](https://www.thingiverse.com/thing:5594161)
 
 ## Changelog
+- **V 0.3.1**
+  - MQTT: only one topic for the meter reading, `<clientID>/<mqtt_topic_gas>` (retained); the duplicate `…/state` topic is removed (its retained message is deleted on connect, Home Assistant is switched over via discovery, the entity and its history are kept)
+  - Firmware version with git commit in the web UI footer (linked to GitHub), on the TFT and in Home Assistant
 - **V 0.3.0**
   - Platform: Arduino-ESP32 core 3.x via [pioarduino](https://github.com/pioarduino/platform-espressif32) (the official PlatformIO platform only ships the outdated core 2.x)
   - Libraries: [espMqttClient](https://github.com/bertmelis/espMqttClient) replaces the unmaintained PubSubClient (MQTT runs in its own task, connecting never blocks the main loop); [LovyanGFX](https://github.com/lovyan03/LovyanGFX) replaces TFT_eSPI
@@ -47,7 +50,7 @@ An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G
 ## Features
 - Pulse counting via reed switch, hysteresis for noise rejection
 - TFT display: meter reading with flow estimate, Wi-Fi, MQTT and device pages, local editing of the meter value, setup instructions while the config portal is active
-- MQTT publishing with retained numeric state (`<clientID>/measurement/gas/state`) and Home Assistant discovery (sensor + number entity to set the reading)
+- MQTT publishing with retained numeric state (`<clientID>/measurement/gas`) and Home Assistant discovery (sensor + number entity to set the reading)
 - Wi-Fi setup via captive portal; MQTT via portal or web UI; settings and counter persisted to LittleFS
 - Web UI in English/German, mobile-friendly layout, restart button, OTA update form, optional login
 
@@ -95,6 +98,7 @@ The upper button (next to the top-right corner) cycles through the pages, the lo
 
 ### Web UI (served by the device)
 - Status card with MQTT state, uptime, current volume
+- Footer with firmware version, git commit and link to this repository
 - Adjust meter value
 - MQTT settings (server/port/user/pass, clientID, topics), restart button, OTA upload
 - Language toggle EN/DE; default follows browser language
@@ -104,7 +108,7 @@ The upper button (next to the top-right corner) cycles through the pages, the lo
 ### HTTP API (local)
 All `POST` endpoints require the header `X-Requested-With: gaszaehler` (CSRF protection); requests without it are rejected with `403`. If a web UI password is set, all endpoints require HTTP Digest (or Basic) auth with user `admin`.
 
-- `GET /api/status` → JSON with MQTT/Wi-Fi state, topics, uptime, masked password, client ID, current reading.
+- `GET /api/status` → JSON with MQTT/Wi-Fi state, topics, uptime, masked password, client ID, current reading, flow, firmware version and commit.
 - `POST /api/consumption` with `value` (m3, e.g. `12345.67` or `12345,67`, max `999999.99`) → sets meter value and saves.
 - `POST /api/mqtt` with `server, port, username, password, clientid, topic, topic_current` → saves the settings, reconnects, republishes discovery. An empty `password` keeps the stored one (unless `username` is empty, then it is cleared).
 - `POST /api/restart` → replies then restarts the ESP32.
@@ -112,8 +116,7 @@ All `POST` endpoints require the header `X-Requested-With: gaszaehler` (CSRF pro
 
 ### MQTT topics
 All values in m³ with two decimals (e.g. `141988.24`), published every 60 s and right after every correction.
-- State (retained): `<clientID>/<mqtt_topic_gas>/state` (e.g. `Gaszaehler_ABC/measurement/gas/state`)
-- Same value, not retained (kept for compatibility with older setups): `<clientID>/<mqtt_topic_gas>` (default `measurement/gas`)
+- Meter reading (retained): `<clientID>/<mqtt_topic_gas>` (default `measurement/gas`, e.g. `Gaszaehler_ABC/measurement/gas`). Retained, so Home Assistant has the value right after its own restart.
 - Correction (command) topic, subscribed: `<clientID>/<mqtt_topic_current>` (default `measurement/current`)
 - Availability (retained): `<clientID>/availability` with `online`/`offline`
 
@@ -121,7 +124,7 @@ All values in m³ with two decimals (e.g. `141988.24`), published every 60 s and
 - Discovery retained topics:
   - `homeassistant/sensor/<clientID>_gas_volume/config` (total, `device_class: gas`, `state_class: total_increasing`)
   - `homeassistant/number/<clientID>_meter_set/config` (number entity to set the meter reading; writes to `<clientID>/<mqtt_topic_current>`, shows the current total)
-- State topic in discovery points to `<clientID>/<mqtt_topic_gas>/state`
+- State topic in discovery points to `<clientID>/<mqtt_topic_gas>`
 - Availability wired to `<clientID>/availability`
 
 ### Edit meter value
@@ -147,7 +150,9 @@ All values in m³ with two decimals (e.g. `141988.24`), published every 60 s and
   - `util`: parsing/formatting without Arduino dependencies
   - `config.h`: pins, intervals, limits
 - `lib/ui/`: display layouts and a small RGB565 framebuffer library with anti-aliased fonts. It has no Arduino dependencies, so the screens can be rendered on a PC.
-- `web/index.html`: web UI; `scripts/embed_web.py` gzips it into the firmware at build time (generated header in `include/generated/`, not committed)
+- `web/index.html`: web UI; `scripts/embed_web.py` gzips it into the firmware at build time
+- `scripts/build_info.py`: puts the git commit into the firmware (shown as `V x.y.z (commit)`, `*` = built with uncommitted changes)
+- Both scripts write to `include/generated/` (not committed)
 - `tools/fontgen/`: regenerates the font headers in `lib/ui/fonts/` from the [Inter](https://rsms.me/inter/) font (SIL Open Font License 1.1)
 
 ### Screenshots

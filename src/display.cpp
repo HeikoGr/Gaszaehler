@@ -117,7 +117,7 @@ namespace
         s.mqttPort = settings.mqttPort;
         s.clientId = settings.clientId;
         s.mqttStatus = mqtt::status();
-        s.version = FIRMWARE_VERSION;
+        s.version = firmwareVersionLong();
         s.uptimeSeconds = millis() / 1000;
         s.pulseCount = pulses;
         s.editValue = editValue;

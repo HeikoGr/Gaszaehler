@@ -2,7 +2,10 @@
 #pragma once
 #include <stdint.h>
 
-constexpr const char *FIRMWARE_VERSION = "V 0.3.0";
+constexpr const char *FIRMWARE_VERSION = "V 0.3.1";
+// "V 0.3.1 (abc1234)", "*" marks a build with uncommitted changes
+const char *firmwareVersionLong();
+constexpr const char *PROJECT_URL = "https://github.com/HeikoGr/Gaszaehler";
 
 // Pins (LilyGO TTGO T-Display)
 constexpr int REED_PIN = 32; // ADC1 pin, reed contact to 3.3 V with 1 kOhm pull-down

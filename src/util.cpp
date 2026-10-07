@@ -1,5 +1,6 @@
 #include "util.h"
 #include "config.h"
+#include "generated/build_info.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,6 +64,14 @@ bool parseMeterValue(const char *str, size_t len, uint32_t &result)
         fraction *= 10;
     result = integerPart * 100 + fraction;
     return result <= MAX_METER_VALUE;
+}
+
+const char *firmwareVersionLong()
+{
+    static char text[40];
+    if (!text[0])
+        snprintf(text, sizeof(text), "%s (%s%s)", FIRMWARE_VERSION, BUILD_COMMIT, BUILD_DIRTY ? "*" : "");
+    return text;
 }
 
 void formatVolume(char *out, size_t size, uint32_t value)
