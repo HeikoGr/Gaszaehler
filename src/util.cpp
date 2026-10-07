@@ -60,6 +60,9 @@ bool parseMeterValue(const char *str, size_t len, uint32_t &result)
             return false;
         }
     }
+    // a separator without digits after it ("." or "123.") is not a valid number
+    if (fractionDigits == 0)
+        return false;
     if (fractionDigits == 1)
         fraction *= 10;
     result = integerPart * 100 + fraction;

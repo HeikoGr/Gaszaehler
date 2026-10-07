@@ -30,7 +30,9 @@ namespace
                 closed = true;
                 uint32_t now = millis();
                 portENTER_CRITICAL(&lock);
-                pulseCount++;
+                // saturate at the largest representable reading instead of exceeding it
+                if (offsetValue + pulseCount < MAX_METER_VALUE)
+                    pulseCount++;
                 lastPulseInterval = pulseSeen ? now - lastPulseMillis : 0;
                 lastPulseMillis = now;
                 pulseSeen = true;

@@ -93,10 +93,10 @@ button:disabled { opacity:0.4; cursor:not-allowed; }
 .grid-two > div { min-width: 0; }
 input, select, textarea { width: 100%; box-sizing: border-box; }
 
-/* Mobile-specific: stack two-column grids and make buttons full-width */
+/* Mobile-specific: stack two-column grids and make card buttons full-width */
 @media (max-width:480px) {
     .grid-two { grid-template-columns: 1fr; gap:10px; }
-    button { width: 100%; }
+    .card button { width: 100%; }
     input { font-size: 0.95rem; }
     label { display:block; }
 }

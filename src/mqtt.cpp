@@ -25,6 +25,10 @@ namespace
     bool attemptedOnce = false;
     uint32_t lastPublish = 0;
     bool reconfigurePending = false;
+    // identity whose retained topics are removed after the next connect (changed while disconnected)
+    bool cleanupPending = false;
+    char cleanupId[sizeof(Settings::clientId)];
+    char cleanupTopic[sizeof(Settings::topicGas)];
 
     // Events from the MQTT task, handled in loop() (callbacks run in the MQTT task)
     portMUX_TYPE eventLock = portMUX_INITIALIZER_UNLOCKED;
@@ -160,6 +164,21 @@ namespace
         Serial.printf("MQTT: cleared Home Assistant discovery of old client ID %s\n", id);
     }
 
+    // Removes the retained topics of a previous client ID / topic that differ from the current ones
+    void clearOldIdentity(const char *oldId, const char *oldTopic)
+    {
+        bool idChanged = strcmp(oldId, settings.clientId) != 0;
+        if (idChanged || strcmp(oldTopic, settings.topicGas) != 0)
+        {
+            // the retained meter reading would otherwise stay on the old topic forever
+            String oldStateTopic = String(oldId) + "/" + oldTopic;
+            publish(oldStateTopic, "", true);
+            publish(oldStateTopic + "/set", "", true);
+        }
+        if (idChanged)
+            clearDiscovery(oldId);
+    }
+
     void handleCorrection(const char *payload, size_t len, bool retained)
     {
         // The broker sets the retain flag only when replaying a stored message after (re)subscribing.
@@ -221,6 +240,11 @@ namespace mqtt
             statusText = "connected";
             lastErrorCode = 0;
             Serial.printf("MQTT: connected to %s\n", host);
+            if (cleanupPending)
+            {
+                cleanupPending = false;
+                clearOldIdentity(cleanupId, cleanupTopic);
+            }
             publish(String(availabilityTopic), "online", true);
             client.subscribe(setTopic, 1);
             publishDiscovery();
@@ -271,19 +295,17 @@ namespace mqtt
     {
         if (client.connected())
         {
-            bool idChanged = strcmp(old.clientId, settings.clientId) != 0;
-            if (idChanged || strcmp(old.topicGas, settings.topicGas) != 0)
-            {
-                // the retained meter reading would otherwise stay on the old topic forever
-                String oldTopic = String(old.clientId) + "/" + old.topicGas;
-                publish(oldTopic, "", true);
-                publish(oldTopic + "/set", "", true);
-            }
-            if (idChanged)
-                clearDiscovery(old.clientId);
-            else
+            clearOldIdentity(old.clientId, old.topicGas);
+            if (strcmp(old.clientId, settings.clientId) == 0)
                 publish(String(availabilityTopic), "offline", true);
             client.disconnect(); // graceful: queued messages are sent first
+        }
+        else if (!cleanupPending)
+        {
+            // Broker not reachable now: remember the identity that was last published, clean up later
+            strlcpy(cleanupId, old.clientId, sizeof(cleanupId));
+            strlcpy(cleanupTopic, old.topicGas, sizeof(cleanupTopic));
+            cleanupPending = true;
         }
         reconfigurePending = true;
     }

@@ -1,7 +1,9 @@
 #include "settings.h"
+#include "config.h"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <SPIFFS.h>
+#include <esp_partition.h>
 #include <string.h>
 
 Settings settings;
@@ -31,12 +33,12 @@ namespace
         return true;
     }
 
-    // Reads the data file of firmware <= 0.2.0 from SPIFFS, returns an empty string if there is none
-    String readLegacySpiffs()
+    // Reads the data file of firmware <= 0.2.0 from SPIFFS (empty if there is none), returns false if
+    // the partition holds no SPIFFS at all
+    bool readLegacySpiffs(String &data)
     {
-        String data;
         if (!SPIFFS.begin(false))
-            return data;
+            return false;
         const char *path = SPIFFS.exists(DATA_FILE) ? DATA_FILE : (SPIFFS.exists(TMP_FILE) ? TMP_FILE : nullptr);
         if (path)
         {
@@ -45,7 +47,26 @@ namespace
             file.close();
         }
         SPIFFS.end();
-        return data;
+        return true;
+    }
+
+    // True if the filesystem partition was never written (all 0xFF), e.g. on a freshly flashed device
+    bool partitionBlank()
+    {
+        const esp_partition_t *part =
+            esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, nullptr);
+        if (!part)
+            return false;
+        uint8_t buf[256];
+        for (size_t pos = 0; pos < 8192 && pos < part->size; pos += sizeof(buf))
+        {
+            if (esp_partition_read(part, pos, buf, sizeof(buf)) != ESP_OK)
+                return false;
+            for (uint8_t b : buf)
+                if (b != 0xFF)
+                    return false;
+        }
+        return true;
     }
 
     void copyIfPresent(JsonVariantConst v, char *dest, size_t len, bool allowEmpty)
@@ -73,8 +94,14 @@ namespace storage
         if (LittleFS.begin(false))
             return true;
 
-        // No LittleFS yet: rescue the SPIFFS data, then format the partition as LittleFS
-        String legacy = readLegacySpiffs();
+        // Format only an empty partition or one holding SPIFFS data of firmware <= 0.2.0 (which is
+        // migrated); a LittleFS that fails to mount is left untouched instead of silently erasing it
+        String legacy;
+        if (!readLegacySpiffs(legacy) && !partitionBlank())
+        {
+            Serial.println("Storage: mounting LittleFS failed, partition left untouched (settings are not saved)");
+            return false;
+        }
         Serial.printf("Storage: no LittleFS found, formatting%s\n", legacy.length() ? " and migrating SPIFFS data" : "");
         if (!LittleFS.begin(true))
         {
@@ -104,10 +131,19 @@ namespace storage
             return false;
         }
 
-        if (doc["count"].is<uint32_t>())
-            pulses = doc["count"].as<uint32_t>();
-        if (doc["offset"].is<uint32_t>())
-            offset = doc["offset"].as<uint32_t>();
+        uint32_t p = doc["count"].is<uint32_t>() ? doc["count"].as<uint32_t>() : pulses;
+        uint32_t o = doc["offset"].is<uint32_t>() ? doc["offset"].as<uint32_t>() : offset;
+        // a corrupt value would otherwise make offset + pulses wrap around in meter::total()
+        if (static_cast<uint64_t>(p) + o <= MAX_METER_VALUE)
+        {
+            pulses = p;
+            offset = o;
+        }
+        else
+        {
+            Serial.printf("Storage: meter reading out of range (count=%lu offset=%lu), ignored\n",
+                          (unsigned long)p, (unsigned long)o);
+        }
         // keys are kept compatible with firmware <= 0.2.0
         copyIfPresent(doc["mqtt_server"], s.mqttServer, sizeof(s.mqttServer), true);
         copyIfPresent(doc["mqtt_port"], s.mqttPort, sizeof(s.mqttPort), false);
