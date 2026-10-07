@@ -46,6 +46,9 @@ char mqtt_server[40] = "";
 char mqtt_port[6] = "1883";
 char mqtt_user[40] = "";
 char mqtt_password[40] = "";
+// Optional password for the web dashboard and OTA (user "admin"); empty = no login
+char web_password[40] = "";
+const char *const WEB_USER = "admin";
 uint32_t pulseCount = 0;
 
 struct ConnectionStatus
@@ -80,6 +83,7 @@ char prevMqttPassword[40];
 char prevClientID[64];
 char prevMqttTopic[64];
 char prevMqttTopicCurrent[64];
+char prevWebPassword[40];
 
 // set gas meter manually
 long number = 0; // Use long for a larger value range
@@ -102,6 +106,8 @@ unsigned long wifiResetRequestTime = 0;
 void publishHassDiscovery();
 void clearHassDiscovery(const String &id);
 void handleRestartRequest();
+void updateWebServer();
+bool checkAuth();
 void saveAndRestart();
 
 // Parse a TCP port, returns 0 if invalid
@@ -171,6 +177,7 @@ void snapshotPersistentState()
     strlcpy(prevClientID, clientID.c_str(), sizeof(prevClientID));
     strlcpy(prevMqttTopic, mqtt_topic_gas.c_str(), sizeof(prevMqttTopic));
     strlcpy(prevMqttTopicCurrent, mqtt_topic_currentVal.c_str(), sizeof(prevMqttTopicCurrent));
+    strlcpy(prevWebPassword, web_password, sizeof(prevWebPassword));
 }
 
 // WiFi Manager
@@ -178,7 +185,8 @@ WiFiManager wm;
 WiFiManagerParameter custom_mqtt_server("server", "mqtt server", mqtt_server, 40);
 WiFiManagerParameter custom_mqtt_port("port", "mqtt port", mqtt_port, 6);
 WiFiManagerParameter custom_mqtt_user("username", "mqtt username", mqtt_user, 40);
-WiFiManagerParameter custom_mqtt_password("password", "mqtt password (leave empty to keep)", "", 40, "type='password'");
+WiFiManagerParameter custom_mqtt_password("password", "mqtt password (leave empty to keep)", "", 39, "type='password'");
+WiFiManagerParameter custom_web_password("webpass", "web UI password, user 'admin' (optional, leave empty to keep)", "", 39, "type='password'");
 // PubSub (MQTT)
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -188,8 +196,9 @@ unsigned long lastMqttAttemptTime = 0; // millis()
 int lastMqttErrorCode = 0;
 // Home Assistant discovery published flag
 bool hassDiscoveryPublished = false;
-// Web server
+// Web server (only runs while the WiFiManager config portal is not active, both use port 80)
 WebServer webServer(80);
+bool webServerRunning = false;
 // Button2 instances
 Button2 button1;
 Button2 button2;
@@ -715,7 +724,7 @@ void setup()
         char storedClientID[64] = "";
         char storedTopic[64] = "";
         char storedTopicCurrent[64] = "";
-        if (spiffsManager.loadData(pulseCount, offset, mqtt_server, mqtt_port, mqtt_user, mqtt_password, storedClientID, storedTopic, storedTopicCurrent))
+        if (spiffsManager.loadData(pulseCount, offset, mqtt_server, mqtt_port, mqtt_user, mqtt_password, storedClientID, storedTopic, storedTopicCurrent, web_password))
         {
             Serial.println("Data successfully loaded");
             if (strlen(storedClientID) > 0)
@@ -752,10 +761,11 @@ void setup()
     wm.addParameter(&custom_mqtt_port);
     wm.addParameter(&custom_mqtt_user);
     wm.addParameter(&custom_mqtt_password);
+    wm.addParameter(&custom_web_password);
 
     wm.setConfigPortalBlocking(false);
     wm.setSaveParamsCallback(WMsaveParamsCallback);
-    wm.setConfigPortalTimeout(60);
+    wm.setConfigPortalTimeout(300);
 
     // Allow larger MQTT messages (e.g., HA discovery payloads)
     client.setBufferSize(1024);
@@ -809,7 +819,7 @@ void loop()
     }
 
     wm.process();
-    webServer.handleClient();
+    updateWebServer();
 
     // Check MQTT connection
     if (connectionStatus.wifiConnected && !connectionStatus.mqttConnected && millis() - timeStamps.lastMQTTreconnectTime >= MQTT_RECONNECT_INTERVAL)
@@ -869,12 +879,13 @@ void saveDataToSPIFFS()
     if (pulseCount == prevPulseCount && offset == prevOffset &&
         strcmp(mqtt_server, prevMqttServer) == 0 && strcmp(mqtt_port, prevMqttPort) == 0 &&
         strcmp(mqtt_user, prevMqttUser) == 0 && strcmp(mqtt_password, prevMqttPassword) == 0 &&
-        strcmp(clientID.c_str(), prevClientID) == 0 && strcmp(mqtt_topic_gas.c_str(), prevMqttTopic) == 0 && strcmp(mqtt_topic_currentVal.c_str(), prevMqttTopicCurrent) == 0)
+        strcmp(clientID.c_str(), prevClientID) == 0 && strcmp(mqtt_topic_gas.c_str(), prevMqttTopic) == 0 && strcmp(mqtt_topic_currentVal.c_str(), prevMqttTopicCurrent) == 0 &&
+        strcmp(web_password, prevWebPassword) == 0)
     {
         Serial.println("No new data to save");
         return;
     }
-    if (spiffsManager.saveData(pulseCount, offset, mqtt_server, mqtt_port, mqtt_user, mqtt_password, (char*)clientID.c_str(), (char*)mqtt_topic_gas.c_str(), (char*)mqtt_topic_currentVal.c_str()))
+    if (spiffsManager.saveData(pulseCount, offset, mqtt_server, mqtt_port, mqtt_user, mqtt_password, (char*)clientID.c_str(), (char*)mqtt_topic_gas.c_str(), (char*)mqtt_topic_currentVal.c_str(), web_password))
     {
         snapshotPersistentState();
         timeStamps.lastSaveTime = millis();
@@ -994,6 +1005,7 @@ void clearHassDiscovery(const String &id)
         return;
     client.publish((String("homeassistant/sensor/") + id + "_gas_volume/config").c_str(), "", true);
     client.publish((String("homeassistant/sensor/") + id + "_current_value/config").c_str(), "", true);
+    client.publish((String("homeassistant/number/") + id + "_meter_set/config").c_str(), "", true);
     client.publish((id + "/availability").c_str(), "", true);
     Serial.printf("Cleared Home Assistant discovery for old client ID %s\n", id.c_str());
 }
@@ -1043,28 +1055,35 @@ void publishHassDiscovery()
         Serial.printf(" -> publish returned: %s\n", ok1 ? "true" : "false");
     }
 
-    // Sensor: current instantaneous value
+    // Number: lets Home Assistant set the meter reading (publishes to the correction topic),
+    // shows the current total as its state
     {
         JsonDocument doc;
-        doc["name"] = String(clientID + " Current Value");
-        doc["unique_id"] = String(clientID + "_current_value");
-        doc["state_topic"] = currentTopic;
+        doc["name"] = String(clientID + " Set Meter Reading");
+        doc["unique_id"] = String(clientID + "_meter_set");
+        doc["command_topic"] = currentTopic;
+        doc["state_topic"] = baseHuman + "/state";
         doc["unit_of_measurement"] = "m³";
-        // The device clears this topic after applying a correction, so the payload may be empty
-        doc["value_template"] = "{{ value | float(none) }}";
-        doc["state_class"] = "total_increasing";
         doc["device_class"] = "gas";
-        doc["icon"] = "mdi:fire";
+        doc["min"] = 0;
+        doc["max"] = MAX_METER_VALUE / 100.0;
+        doc["step"] = 0.01;
+        doc["mode"] = "box";
+        doc["entity_category"] = "config";
+        doc["icon"] = "mdi:counter";
         doc["availability_topic"] = availTopic;
         doc["device"] = device;
 
         String payload;
         serializeJson(doc, payload);
-        String discoveryTopic = String("homeassistant/sensor/") + clientID + "_current_value/config";
+        String discoveryTopic = String("homeassistant/number/") + clientID + "_meter_set/config";
         Serial.printf("Publishing discovery topic: %s (len=%u)\n", discoveryTopic.c_str(), (unsigned)payload.length());
         Serial.println(payload);
         ok2 = client.publish(discoveryTopic.c_str(), payload.c_str(), true);
         Serial.printf(" -> publish returned: %s\n", ok2 ? "true" : "false");
+
+        // Remove the sensor entity of firmware <= 0.1.1 that this number replaces
+        client.publish((String("homeassistant/sensor/") + clientID + "_current_value/config").c_str(), "", true);
     }
     // Publish availability as online (retain)
     Serial.printf("Publishing availability topic: %s\n", (clientID + "/availability").c_str());
@@ -1247,6 +1266,8 @@ void handleButton2Click(Button2 &btn)
         // Require a second click within the confirmation window to avoid accidental Wi-Fi resets
         if (wifiResetRequestTime != 0 && millis() - wifiResetRequestTime < WIFI_RESET_CONFIRM_WINDOW)
         {
+            // Physical access is the recovery path for a forgotten web password
+            web_password[0] = '\0';
             wm.resetSettings();
             saveAndRestart();
         }
@@ -1296,6 +1317,8 @@ void WMsaveParamsCallback()
     // Empty password field means "keep the stored password"
     if (strlen(custom_mqtt_password.getValue()) > 0)
         strlcpy(mqtt_password, custom_mqtt_password.getValue(), sizeof(mqtt_password));
+    if (strlen(custom_web_password.getValue()) > 0)
+        strlcpy(web_password, custom_web_password.getValue(), sizeof(web_password));
     Serial.printf("Got MQTT params from WifiManager: %s:%s (user: %s)\n", mqtt_server, mqtt_port, mqtt_user);
     saveDataToSPIFFS();
     reconnect_mqtt();
@@ -1338,11 +1361,15 @@ void MQTTcallbackReceive(char *topic, byte *payload, unsigned int length)
 
 void handleRootRequest()
 {
+    if (!checkAuth())
+        return;
     webServer.send_P(200, "text/html", WEB_DASHBOARD);
 }
 
 void handleStatusRequest()
 {
+    if (!checkAuth())
+        return;
     connectionStatus.wifiConnected = (WiFi.status() == WL_CONNECTED);
     connectionStatus.mqttConnected = client.connected();
     JsonDocument doc;
@@ -1383,6 +1410,16 @@ void sendJsonError(int code, const char *message)
     webServer.send(code, "application/json", payload);
 }
 
+// Optional login: returns true if no web password is set or the request carries valid credentials,
+// otherwise asks the browser for credentials (Digest auth, password never sent in plain text)
+bool checkAuth()
+{
+    if (strlen(web_password) == 0 || webServer.authenticate(WEB_USER, web_password))
+        return true;
+    webServer.requestAuthentication(DIGEST_AUTH, "Gaszaehler");
+    return false;
+}
+
 // CSRF protection for state-changing requests: the dashboard sends a custom header,
 // which a foreign website cannot add without a CORS preflight (never granted here).
 // If the browser sends an Origin header, it must also match the Host.
@@ -1398,6 +1435,8 @@ bool isTrustedRequest()
 
 bool rejectUntrustedRequest()
 {
+    if (!checkAuth())
+        return true;
     if (isTrustedRequest())
         return false;
     Serial.println("Rejected request without valid X-Requested-With/Origin header");
@@ -1574,7 +1613,7 @@ void handleFirmwareUpload()
     {
         otaStarted = false;
         // Headers are parsed before the body, so the CSRF check works here, before anything is flashed
-        otaRejected = !isTrustedRequest();
+        otaRejected = !isTrustedRequest() || (strlen(web_password) > 0 && !webServer.authenticate(WEB_USER, web_password));
         if (otaRejected)
         {
             Serial.println("OTA: rejected untrusted upload");
@@ -1619,7 +1658,9 @@ void handleFirmwareUpload()
 
 void handleFirmwareUploadDone()
 {
-    if (otaRejected || !isTrustedRequest())
+    if (rejectUntrustedRequest())
+        return;
+    if (otaRejected)
     {
         sendJsonError(403, "forbidden");
         return;
@@ -1650,8 +1691,27 @@ void setupWebInterface()
     webServer.on("/update", HTTP_POST, handleFirmwareUploadDone, handleFirmwareUpload);
     webServer.onNotFound([]()
                          { sendJsonError(404, "not found"); });
-    webServer.begin();
-    Serial.println("HTTP dashboard available on http://" + WiFi.localIP().toString());
+}
+
+// Run the dashboard only while the config portal is inactive: both servers listen on port 80
+void updateWebServer()
+{
+    bool shouldRun = !wm.getConfigPortalActive() && WiFi.status() == WL_CONNECTED;
+    if (shouldRun && !webServerRunning)
+    {
+        webServer.begin();
+        webServerRunning = true;
+        Serial.println("HTTP dashboard available on http://" + WiFi.localIP().toString());
+    }
+    else if (!shouldRun && webServerRunning && wm.getConfigPortalActive())
+    {
+        // Keep the dashboard on short Wi-Fi drops, stop it only for the portal
+        webServer.stop();
+        webServerRunning = false;
+        Serial.println("HTTP dashboard stopped (config portal active)");
+    }
+    if (webServerRunning)
+        webServer.handleClient();
 }
 
 void handleRestartRequest()

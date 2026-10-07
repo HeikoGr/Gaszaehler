@@ -32,7 +32,7 @@ bool SPIFFSManager::mountSPIFFS()
     return true;
 }
 
-bool SPIFFSManager::saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password, char *mqtt_clientid, char *mqtt_topic_gas, char *mqtt_topic_current)
+bool SPIFFSManager::saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password, char *mqtt_clientid, char *mqtt_topic_gas, char *mqtt_topic_current, char *web_password)
 {
     // Write to a temporary file first, so a power loss during writing never destroys the last good state
     File file = SPIFFS.open(TMP_FILE, FILE_WRITE);
@@ -53,6 +53,7 @@ bool SPIFFSManager::saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_se
     doc["mqtt_clientid"] = mqtt_clientid;
     doc["mqtt_topic_gas"] = mqtt_topic_gas;
     doc["mqtt_topic_current"] = mqtt_topic_current;
+    doc["web_password"] = web_password;
 
     if (serializeJson(doc, file) == 0)
     {
@@ -83,7 +84,7 @@ bool SPIFFSManager::saveData(uint32_t pulseCount, uint32_t offset, char *mqtt_se
     return true;
 }
 
-bool SPIFFSManager::loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password, char *mqtt_clientid, char *mqtt_topic_gas, char *mqtt_topic_current)
+bool SPIFFSManager::loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_server, char *mqtt_port, char *mqtt_user, char *mqtt_password, char *mqtt_clientid, char *mqtt_topic_gas, char *mqtt_topic_current, char *web_password)
 {
     const char *path = DATA_FILE;
     if (!SPIFFS.exists(DATA_FILE) && SPIFFS.exists(TMP_FILE))
@@ -130,6 +131,7 @@ bool SPIFFSManager::loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_
     copyIfSet(doc["mqtt_clientid"], mqtt_clientid, 64);
     copyIfSet(doc["mqtt_topic_gas"], mqtt_topic_gas, 64);
     copyIfSet(doc["mqtt_topic_current"], mqtt_topic_current, 64);
+    copyIfSet(doc["web_password"], web_password, 40);
     
     Serial.printf(" < Meter reading: %u\n", pulseCount);
     Serial.printf(" < Offset: %u\n", offset);

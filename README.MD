@@ -61,8 +61,10 @@ Wiring note: Reed contact to 3.3 V; GPIO32 pulled down with 1 kΩ. On rising edg
 - Connect with phone/laptop to Wi-Fi `GaszaehlerAP` (open), the portal opens automatically (or browse to `192.168.4.1`).
 - Choose "Configure WiFi", enter your Wi-Fi SSID/password. Optional: set static IP (leave DHCP if unsure).
 - The portal also asks for the MQTT server, port, user and password (leave the password empty to keep the stored one).
-- Save; the ESP32 joins your network. The portal closes after 60 s without activity; power-cycle the device to open it again.
-- Later resets: on the Wi-Fi TFT page press the lower button twice (within 3 s) to forget Wi-Fi and reopen the portal. MQTT settings are kept.
+- Optional: set a **web UI password** in the portal. The dashboard and OTA then require a login (user `admin`, HTTP Digest auth). Leave it empty to keep the current setting.
+- Save; the ESP32 joins your network. The portal closes after 300 s without activity; power-cycle the device to open it again.
+- While the portal is active the dashboard is not served (both use port 80); it starts automatically once Wi-Fi is connected and the portal is closed.
+- Later resets: on the Wi-Fi TFT page press the lower button twice (within 3 s) to forget Wi-Fi **and the web UI password** and reopen the portal. MQTT settings are kept.
 
 ## Usage
 ### TFT screens
@@ -95,7 +97,7 @@ Wiring note: Reed contact to 3.3 V; GPIO32 pulled down with 1 kΩ. On rising edg
 <img src="img/screenshotWeb01.png" width="320" alt="Web UI">
 
 ### HTTP API (local)
-All `POST` endpoints require the header `X-Requested-With: gaszaehler` (CSRF protection); requests without it are rejected with `403`. There is no authentication, so only run the device in a trusted network.
+All `POST` endpoints require the header `X-Requested-With: gaszaehler` (CSRF protection); requests without it are rejected with `403`. If a web UI password is set, all endpoints require HTTP Digest (or Basic) auth with user `admin`.
 
 - `GET /api/status` → JSON with MQTT/Wi-Fi state, topics, uptime, masked password, client ID, current reading.
 - `POST /api/consumption` with `value` (m3, e.g. `12345.67` or `12345,67`, max `999999.99`) → sets meter value and saves.
@@ -112,7 +114,7 @@ All `POST` endpoints require the header `X-Requested-With: gaszaehler` (CSRF pro
 ### Home Assistant
 - Discovery retained topics:
   - `homeassistant/sensor/<clientID>_gas_volume/config` (total, `device_class: gas`, `state_class: total_increasing`)
-  - `homeassistant/sensor/<clientID>_current_value/config` (current, `device_class: gas`, `state_class: total_increasing`)
+  - `homeassistant/number/<clientID>_meter_set/config` (number entity to set the meter reading; writes to `<clientID>/<mqtt_topic_current>`, shows the current total)
 - State topic in discovery points to `<clientID>/measurement/gas/state`
 - Availability wired to `<clientID>/availability`
 
