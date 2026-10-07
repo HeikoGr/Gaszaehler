@@ -1,0 +1,23 @@
+{
+  "gasVolumeRaw": 14198824,
+  "gasVolumeM3": 141988.24,
+  "gasVolumeFormatted": "141988.24",
+  "mqttConnected": true,
+  "mqttServer": "192.168.178.10",
+  "mqttPort": "1883",
+  "mqttUser": "mqtt",
+  "maskedPassword": "********",
+  "wifiConnected": true,
+  "uptimeSeconds": 274620,
+  "version": "V 0.2.0",
+  "clientID": "Gaszaehler_7C9EBD12",
+  "mqttTopicGas": "Gaszaehler_7C9EBD12/measurement/gas",
+  "mqttTopicCurrent": "Gaszaehler_7C9EBD12/measurement/current",
+  "mqttTopicBase": "measurement/gas",
+  "mqttTopicCurrentBase": "measurement/current",
+  "offset": 14197000,
+  "pulseCount": 1824,
+  "mqttLastStatus": "connected",
+  "mqttLastAttemptUptime": 12,
+  "mqttLastError": 0
+}

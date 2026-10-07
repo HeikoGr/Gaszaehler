@@ -39,3 +39,29 @@ jobs:
         name: firmware
         path: |
           .pio/build/**/firmware.bin
+
+  screenshots:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: tools/screenshots/package-lock.json
+    - name: Install Playwright
+      working-directory: tools/screenshots
+      run: |
+        npm ci
+        npx playwright install --with-deps chromium
+    - name: Render TFT and web UI screenshots
+      working-directory: tools/screenshots
+      run: |
+        npm run lcd -- --out "$RUNNER_TEMP/screenshots"
+        npm run web -- --out "$RUNNER_TEMP/screenshots"
+    - name: Upload screenshots
+      uses: actions/upload-artifact@v4
+      with:
+        name: screenshots
+        path: ${{ runner.temp }}/screenshots
+

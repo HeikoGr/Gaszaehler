@@ -7,6 +7,12 @@ An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G
 3D-printed enclosure by 3dFabrik: [Thingiverse](https://www.thingiverse.com/thing:5594161)
 
 ## Changelog
+- **V 0.2.0**
+  - New TFT layout (anti-aliased fonts, flow estimate, flicker-free), setup screen while the config portal is active, cancel option when editing the meter value
+  - Optional web UI/OTA password (set in the config portal)
+  - Home Assistant: `number` entity to set the meter reading (replaces the "current value" sensor)
+  - Config portal timeout 300 s; dashboard and portal no longer compete for port 80
+  - Web UI moved to `web/index.html`; screenshots of TFT and web UI are generated from the source (`tools/screenshots`)
 - **V 0.1.1** (audit fixes)
   - Fix: autosave interval was 100 minutes instead of 10; state is now also saved before restart/OTA
   - Fix: buffer overflow on the "edit meter value" screen and in the WiFiManager parameter copy
@@ -68,25 +74,13 @@ Wiring note: Reed contact to 3.3 V; GPIO32 pulled down with 1 kΩ. On rising edg
 
 ## Usage
 ### TFT screens
-1) Gas: current total
+The upper button (next to the top-right corner) cycles through the pages, the lower button triggers the action shown at the bottom right.
 
-   <img src="img/screenshot01.png" width="240" alt="Gas screen">
-
-2) Wi-Fi: SSID/IP, reset Wi-Fi via lower button (press twice); opens AP `GaszaehlerAP`
-
-   <img src="img/screenshot02.png" width="240" alt="Wi-Fi screen">
-
-3) MQTT: broker IP and device name
-
-   <img src="img/screenshot03.png" width="240" alt="MQTT screen">
-
-4) Misc: firmware version, entry to edit meter value
-
-   <img src="img/screenshot04.png" width="240" alt="Misc screen">
-
-5) Edit meter value locally (no MQTT required)
-
-   <img src="img/screenshot05.png" width="240" alt="Edit meter screen">
+| | |
+|---|---|
+| <img src="img/lcd-gas.png" width="360" alt="Gas screen"><br>**Gas:** meter reading, flow estimate, time since last pulse. Lower button: save & publish | <img src="img/lcd-wifi.png" width="360" alt="WiFi screen"><br>**WiFi:** network, signal, IP. Lower button twice: reset Wi-Fi |
+| <img src="img/lcd-mqtt.png" width="360" alt="MQTT screen"><br>**MQTT:** broker and client ID (errors are shown in red) | <img src="img/lcd-info.png" width="360" alt="Device screen"><br>**Device:** firmware, uptime, pulses. Lower button: edit meter value |
+| <img src="img/lcd-edit.png" width="360" alt="Edit screen"><br>**Edit meter value:** upper button moves the cursor, lower button increments the digit | <img src="img/lcd-portal.png" width="360" alt="Setup screen"><br>**WiFi setup:** shown while the config portal is active |
 
 ### Web UI (served by the device)
 - Status card with MQTT state, uptime, current volume
@@ -94,7 +88,7 @@ Wiring note: Reed contact to 3.3 V; GPIO32 pulled down with 1 kΩ. On rising edg
 - MQTT settings (server/port/user/pass, clientID, topics), restart button, OTA upload
 - Language toggle EN/DE; default follows browser language
 
-<img src="img/screenshotWeb01.png" width="320" alt="Web UI">
+<img src="img/web-mobile-en.png" width="320" alt="Web UI">
 
 ### HTTP API (local)
 All `POST` endpoints require the header `X-Requested-With: gaszaehler` (CSRF protection); requests without it are rejected with `403`. If a web UI password is set, all endpoints require HTTP Digest (or Basic) auth with user `admin`.
@@ -125,6 +119,24 @@ All `POST` endpoints require the header `X-Requested-With: gaszaehler` (CSRF pro
 ### Persistence (SPIFFS)
 - Stored: pulse counter, offset, Wi-Fi/MQTT credentials, clientID, topic bases
 - Autosave interval and manual save via display button
+
+## Development
+- `src/main.cpp`: firmware logic (pulse counting, MQTT, web server, buttons)
+- `lib/ui/`: display layouts and a small RGB565 framebuffer library with anti-aliased fonts. It has no Arduino dependencies, so the screens can be rendered on a PC.
+- `web/index.html`: web UI; `scripts/embed_web.py` gzips it into the firmware at build time (generated header in `include/generated/`, not committed)
+- `tools/fontgen/`: regenerates the font headers in `lib/ui/fonts/` from the [Inter](https://rsms.me/inter/) font (SIL Open Font License 1.1)
+
+### Screenshots
+All images in `img/` (except the schematic) are generated from the source code, no device needed:
+```
+cd tools/screenshots
+npm ci && npx playwright install chromium   # once
+npm run all                                 # TFT screens (C++ on the PC) + web UI (headless Chromium)
+```
+- TFT: `lcd_screenshots.py` compiles `lib/ui` together with `render_lcd.cpp` (example data for every screen) using the local C++ compiler and writes `img/lcd-*.png` (pixel-exact, 2× scaled).
+- Web: `web_screenshots.js` opens `web/index.html` with the device API mocked from `status.fixture.json` and writes `img/web-*.png`.
+- CI runs the same scripts on every push and uploads the images as the `screenshots` artifact.
+- On the device, a long press on the lower button still dumps the current screen to the serial console (decode with `contrib/rle_to_rgb565_to_png.html`).
 
 ## Alternatives
 [ArduCounter](https://github.com/StefanStrobel/ArduCounter/) counts on multiple pins, supports displays, and integrates with FHEM; does not natively support MQTT.
