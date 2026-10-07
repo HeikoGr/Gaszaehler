@@ -1,0 +1,13 @@
+{
+  "name": "gaszaehler-screenshots",
+  "private": true,
+  "description": "Generates the README screenshots of the web UI and the TFT display",
+  "scripts": {
+    "web": "node web_screenshots.js",
+    "lcd": "python3 lcd_screenshots.py",
+    "all": "npm run lcd && npm run web"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
