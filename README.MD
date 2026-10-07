@@ -7,6 +7,17 @@ An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G
 3D-printed enclosure by 3dFabrik: [Thingiverse](https://www.thingiverse.com/thing:5594161)
 
 ## Changelog
+- **V 0.1.1** (audit fixes)
+  - Fix: autosave interval was 100 minutes instead of 10; state is now also saved before restart/OTA
+  - Fix: buffer overflow on the "edit meter value" screen and in the WiFiManager parameter copy
+  - Fix: retained or invalid MQTT correction values could reset the meter (now validated, retained message is cleared after use)
+  - Fix: Home Assistant value lost its last digit above ~131072 m³ (float precision)
+  - Fix: web UI interpreted a decimal point as thousands separator (factor 100); server validates input strictly
+  - Fix: saving the MQTT form without retyping the password erased it; WiFiManager portal reset MQTT settings to compile-time defaults
+  - Fix: invalid MQTT port caused a reboot loop
+  - Security: CSRF protection for all state-changing endpoints incl. OTA; no plaintext password in serial log; no personal defaults in source
+  - Wi-Fi reset on the display needs a second click to confirm; old Home Assistant entities are removed when the client ID changes
+  - SPIFFS writes are power-loss safe (temp file + rename); library versions pinned; ArduinoJson 7
 - **V 0.1.0**
   - UI: mobile tweaks, restart button, locale-aware input (comma/point), browser-driven language default (DE/EN toggle remains)
   - MQTT/HA: `device_class: gas`, retained discovery + availability, larger MQTT packet buffer, restart endpoint
@@ -43,14 +54,15 @@ Wiring note: Reed contact to 3.3 V; GPIO32 pulled down with 1 kΩ. On rising edg
   platformio run --target upload --environment lilygo-t-display
   platformio device monitor --environment lilygo-t-display
   ```
-- Arduino IDE: uncomment the first line (`#include <Arduino.h>`), rename to `Gaszaehler.ino`.
+- Arduino IDE: rename `src/main.cpp` to `Gaszaehler.ino` and copy the files from `include/` and `src/` next to it; install the libraries listed in `platformio.ini`.
 
 ## First-time setup (tzapu WiFiManager)
 - Power on the device; no known Wi-Fi starts the captive portal `GaszaehlerAP`.
 - Connect with phone/laptop to Wi-Fi `GaszaehlerAP` (open), the portal opens automatically (or browse to `192.168.4.1`).
 - Choose "Configure WiFi", enter your Wi-Fi SSID/password. Optional: set static IP (leave DHCP if unsure).
-- Save; the ESP32 reboots and joins your network. If it cannot connect, the portal reappears after timeout.
-- Later resets: press the lower button on the Wi-Fi TFT page to forget Wi-Fi/MQTT and reopen the portal.
+- The portal also asks for the MQTT server, port, user and password (leave the password empty to keep the stored one).
+- Save; the ESP32 joins your network. The portal closes after 60 s without activity; power-cycle the device to open it again.
+- Later resets: on the Wi-Fi TFT page press the lower button twice (within 3 s) to forget Wi-Fi and reopen the portal. MQTT settings are kept.
 
 ## Usage
 ### TFT screens
@@ -58,7 +70,7 @@ Wiring note: Reed contact to 3.3 V; GPIO32 pulled down with 1 kΩ. On rising edg
 
    <img src="img/screenshot01.png" width="240" alt="Gas screen">
 
-2) Wi-Fi: SSID/IP, reset Wi-Fi/MQTT via lower button; opens AP `Gaszaehler-AP`
+2) Wi-Fi: SSID/IP, reset Wi-Fi via lower button (press twice); opens AP `GaszaehlerAP`
 
    <img src="img/screenshot02.png" width="240" alt="Wi-Fi screen">
 
@@ -83,9 +95,11 @@ Wiring note: Reed contact to 3.3 V; GPIO32 pulled down with 1 kΩ. On rising edg
 <img src="img/screenshotWeb01.png" width="320" alt="Web UI">
 
 ### HTTP API (local)
+All `POST` endpoints require the header `X-Requested-With: gaszaehler` (CSRF protection); requests without it are rejected with `403`. There is no authentication, so only run the device in a trusted network.
+
 - `GET /api/status` → JSON with MQTT/Wi-Fi state, topics, uptime, masked password, client ID, current reading.
-- `POST /api/consumption` with `value` (m3, comma or dot) → sets meter value and saves.
-- `POST /api/mqtt` with `server, port, username, password, clientid, topic, topic_current` → saves to SPIFFS, reconnects, republishes discovery.
+- `POST /api/consumption` with `value` (m3, e.g. `12345.67` or `12345,67`, max `999999.99`) → sets meter value and saves.
+- `POST /api/mqtt` with `server, port, username, password, clientid, topic, topic_current` → saves to SPIFFS, reconnects, republishes discovery. An empty `password` keeps the stored one (unless `username` is empty, then it is cleared).
 - `POST /api/restart` → replies then restarts the ESP32.
 - `POST /update` multipart form (field `firmware`) → OTA flash; device restarts on success.
 
@@ -103,7 +117,7 @@ Wiring note: Reed contact to 3.3 V; GPIO32 pulled down with 1 kΩ. On rising edg
 - Availability wired to `<clientID>/availability`
 
 ### Edit meter value
-- Via MQTT: publish to `<clientID>/measurement/current` (or legacy `<clientID>/gas_meter/currentVal`)
+- Via MQTT: publish the new value in m³ (e.g. `12345.67`) to `<clientID>/measurement/current`. Invalid values are ignored; the device clears a retained message on this topic after applying it.
 - Via display: go to “Edit meter value”, adjust, then save; cancels pulse counter to align with new offset.
 
 ### Persistence (SPIFFS)

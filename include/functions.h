@@ -3,9 +3,11 @@
 #define FUNCTIONS_H
 
 #include <Arduino.h>
+#include <Button2.h>
+#include <TFT_eSPI.h>
 
 // declarations
-String formatWithHundredsSeparator(uint32_t value);
+String formatVolume(uint32_t value);
 void publishGasVolume();
 void saveDataToSPIFFS();
 void updateDisplay();

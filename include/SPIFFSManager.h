@@ -18,6 +18,7 @@ public:
 private:
     bool mountSPIFFS();
     static const char* DATA_FILE;
+    static const char* TMP_FILE;
 };
 
 #endif // SPIFFS_MANAGER_H
