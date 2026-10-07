@@ -52,6 +52,7 @@ main {
 }
 .status-dot.online { background:#22c55e; }
 .muted { color:var(--muted); font-size:0.9rem; }
+.topic-hint { margin:0; font-size:0.8rem; overflow-wrap:anywhere; }
 footer { text-align:center; padding:4px 0 12px; }
 footer a { color:var(--accent-2); text-decoration:none; }
 footer a:hover { text-decoration:underline; }
@@ -166,17 +167,11 @@ input, select, textarea { width: 100%; box-sizing: border-box; }
                     <input type="text" id="mqtt-clientid" name="clientid">
                 </div>
                 <div>
-                    <label for="mqtt-topic" id="lbl-topic" data-i18n="topicBase">Topic (base)</label>
-                    <input type="text" id="mqtt-topic" name="topic" placeholder="measurement/gas">
+                    <label for="mqtt-topic" id="lbl-topic" data-i18n="topic">Topic</label>
+                    <input type="text" id="mqtt-topic" name="topic" placeholder="measurement/gas" aria-describedby="topic-hint">
                 </div>
             </div>
-            <div class="grid-two">
-                <div></div>
-                <div>
-                    <label for="mqtt-topic-current" id="lbl-topic-current" data-i18n="topicCurrent">Topic (current)</label>
-                    <input type="text" id="mqtt-topic-current" name="topic_current" placeholder="measurement/current">
-                </div>
-            </div>
+            <p class="muted topic-hint" id="topic-hint"></p>
             <button type="submit" id="btn-apply" data-i18n="apply">Apply & Connect</button>
             <span class="feedback" id="mqtt-feedback"></span>
         </form>
@@ -267,7 +262,8 @@ async function refreshStatus() {
         // Client ID and topic base
         if (document.activeElement !== mqttForm.clientid) mqttForm.clientid.value = data.clientID || '';
         if (document.activeElement !== mqttForm.topic) mqttForm.topic.value = data.mqttTopicBase || '';
-        if (document.activeElement !== mqttForm.topic_current) mqttForm.topic_current.value = data.mqttTopicCurrentBase || '';
+        document.getElementById('topic-hint').textContent = data.mqttTopicGas
+            ? `${t('topicHintState')}: ${data.mqttTopicGas} · ${t('topicHintSet')}: ${data.mqttTopicSet}` : '';
     } catch (error) {
         mqttInfo.textContent = t('statusUnavailable');
     }
@@ -327,8 +323,9 @@ const translations = {
         restart: 'Restart Device',
         user: 'User',
         password: 'Password',
-        topicBase: 'Topic (base)',
-        topicCurrent: 'Topic (current)'
+        topic: 'Topic',
+        topicHintState: 'Reading',
+        topicHintSet: 'set via'
     },
     de: {
         consuming: 'Wird übertragen...',
@@ -363,8 +360,9 @@ const translations = {
         restart: 'Neustart',
         user: 'Benutzer',
         password: 'Passwort',
-        topicBase: 'Topic (Basis)',
-        topicCurrent: 'Topic (Korrektur)'
+        topic: 'Topic',
+        topicHintState: 'Zählerstand',
+        topicHintSet: 'setzen über'
     }
 };
 // Pick saved language or fallback to browser preference
@@ -426,7 +424,6 @@ mqttForm.addEventListener('submit', async (event) => {
         password: mqttForm.password.value,
         clientid: mqttForm.clientid.value,
         topic: mqttForm.topic.value,
-        topic_current: mqttForm.topic_current.value
     });
     try {
         const response = await fetch('/api/mqtt', {

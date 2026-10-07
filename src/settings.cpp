@@ -63,7 +63,7 @@ bool operator==(const Settings &a, const Settings &b)
     return strcmp(a.mqttServer, b.mqttServer) == 0 && strcmp(a.mqttPort, b.mqttPort) == 0 &&
            strcmp(a.mqttUser, b.mqttUser) == 0 && strcmp(a.mqttPassword, b.mqttPassword) == 0 &&
            strcmp(a.clientId, b.clientId) == 0 && strcmp(a.topicGas, b.topicGas) == 0 &&
-           strcmp(a.topicCorrection, b.topicCorrection) == 0 && strcmp(a.webPassword, b.webPassword) == 0;
+           strcmp(a.webPassword, b.webPassword) == 0;
 }
 
 namespace storage
@@ -115,7 +115,7 @@ namespace storage
         copyIfPresent(doc["mqtt_password"], s.mqttPassword, sizeof(s.mqttPassword), true);
         copyIfPresent(doc["mqtt_clientid"], s.clientId, sizeof(s.clientId), false);
         copyIfPresent(doc["mqtt_topic_gas"], s.topicGas, sizeof(s.topicGas), false);
-        copyIfPresent(doc["mqtt_topic_current"], s.topicCorrection, sizeof(s.topicCorrection), false);
+        // "mqtt_topic_current" of firmware <= 0.3.1 is ignored: the set topic is now <topic>/set
         copyIfPresent(doc["web_password"], s.webPassword, sizeof(s.webPassword), true);
 
         Serial.printf("Storage: loaded pulses=%lu offset=%lu server=%s:%s user=%s password=%s\n",
@@ -135,7 +135,6 @@ namespace storage
         doc["mqtt_password"] = s.mqttPassword;
         doc["mqtt_clientid"] = s.clientId;
         doc["mqtt_topic_gas"] = s.topicGas;
-        doc["mqtt_topic_current"] = s.topicCorrection;
         doc["web_password"] = s.webPassword;
         String payload;
         serializeJson(doc, payload);

@@ -21,8 +21,7 @@ namespace
 
     void onSaveParams()
     {
-        char oldClientId[sizeof(Settings::clientId)];
-        strlcpy(oldClientId, settings.clientId, sizeof(oldClientId));
+        Settings old = settings;
         strlcpy(settings.mqttServer, paramServer.getValue(), sizeof(settings.mqttServer));
         if (parsePort(paramPort.getValue()) != 0)
             strlcpy(settings.mqttPort, paramPort.getValue(), sizeof(settings.mqttPort));
@@ -33,7 +32,7 @@ namespace
         if (paramWebPassword.getValue()[0])
             strlcpy(settings.webPassword, paramWebPassword.getValue(), sizeof(settings.webPassword));
         Serial.printf("Portal: MQTT %s:%s (user: %s)\n", settings.mqttServer, settings.mqttPort, settings.mqttUser);
-        app::settingsChanged(oldClientId);
+        app::settingsChanged(old);
     }
 }
 

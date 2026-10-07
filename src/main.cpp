@@ -44,10 +44,10 @@ namespace app
         display::requestUpdate();
     }
 
-    void settingsChanged(const char *oldClientId)
+    void settingsChanged(const Settings &old)
     {
         save();
-        mqtt::reconfigure(oldClientId);
+        mqtt::reconfigure(old);
         display::requestUpdate();
     }
 

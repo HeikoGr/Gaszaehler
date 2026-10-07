@@ -3,6 +3,8 @@
 #pragma once
 #include <stdint.h>
 
+struct Settings;
+
 namespace mqtt
 {
     void begin();
@@ -10,8 +12,8 @@ namespace mqtt
     void loop(bool wifiConnected);
 
     void publishState();
-    // Settings changed: cleans up the old client ID in Home Assistant if needed and reconnects
-    void reconfigure(const char *oldClientId);
+    // Settings changed: removes retained messages of the old client ID/topic and reconnects
+    void reconfigure(const Settings &old);
     // Publishes "offline" and disconnects gracefully (waits up to timeoutMs)
     void shutdown(uint32_t timeoutMs);
 

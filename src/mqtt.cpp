@@ -17,7 +17,7 @@ namespace
     char password[sizeof(Settings::mqttPassword)];
     char clientId[sizeof(Settings::clientId)];
     char availabilityTopic[sizeof(Settings::clientId) + 16];
-    char correctionTopic[sizeof(Settings::clientId) + sizeof(Settings::topicCorrection) + 1];
+    char setTopic[sizeof(Settings::clientId) + sizeof(Settings::topicGas) + 5];
 
     String statusText = "never";
     int lastErrorCode = 0;
@@ -57,7 +57,7 @@ namespace
         strlcpy(password, settings.mqttPassword, sizeof(password));
         strlcpy(clientId, settings.clientId, sizeof(clientId));
         snprintf(availabilityTopic, sizeof(availabilityTopic), "%s/availability", settings.clientId);
-        snprintf(correctionTopic, sizeof(correctionTopic), "%s/%s", settings.clientId, settings.topicCorrection);
+        snprintf(setTopic, sizeof(setTopic), "%s/%s/set", settings.clientId, settings.topicGas);
         client.setServer(host, port);
         client.setCredentials(user[0] ? user : nullptr, user[0] && password[0] ? password : nullptr);
         client.setClientId(clientId);
@@ -85,7 +85,7 @@ namespace
     void onMessage(const espMqttClientTypes::MessageProperties &props, const char *t, const uint8_t *payload,
                    size_t len, size_t index, size_t total)
     {
-        if (strcmp(t, correctionTopic) != 0 || index != 0 || len != total)
+        if (strcmp(t, setTopic) != 0 || index != 0 || len != total)
             return;
         // Empty payload: our own cleanup of a retained correction (see handleCorrection)
         if (total == 0)
@@ -123,11 +123,11 @@ namespace
         sensor["availability_topic"] = availability;
         sensor["device"] = device;
 
-        // Number: lets Home Assistant set the meter reading via the correction topic
+        // Number: lets Home Assistant set the meter reading via the set topic
         JsonDocument number;
         number["name"] = String(settings.clientId) + " Set Meter Reading";
         number["unique_id"] = String(settings.clientId) + "_meter_set";
-        number["command_topic"] = topic(settings.topicCorrection);
+        number["command_topic"] = stateTopic + "/set";
         number["state_topic"] = stateTopic;
         number["unit_of_measurement"] = "m³";
         number["device_class"] = "gas";
@@ -183,7 +183,7 @@ namespace
             }
         }
         // Remove a retained copy from the broker, so it is not replayed again
-        publish(String(correctionTopic), "", true);
+        publish(String(setTopic), "", true);
     }
 }
 
@@ -222,7 +222,7 @@ namespace mqtt
             lastErrorCode = 0;
             Serial.printf("MQTT: connected to %s\n", host);
             publish(String(availabilityTopic), "online", true);
-            client.subscribe(correctionTopic, 1);
+            client.subscribe(setTopic, 1);
             publishDiscovery();
             publishState();
             // Remove the retained "<topic>/state" of firmware 0.0.2 - 0.3.0
@@ -267,12 +267,20 @@ namespace mqtt
         publish(topic(settings.topicGas), value, true);
     }
 
-    void reconfigure(const char *oldClientId)
+    void reconfigure(const Settings &old)
     {
         if (client.connected())
         {
-            if (strcmp(oldClientId, settings.clientId) != 0)
-                clearDiscovery(oldClientId);
+            bool idChanged = strcmp(old.clientId, settings.clientId) != 0;
+            if (idChanged || strcmp(old.topicGas, settings.topicGas) != 0)
+            {
+                // the retained meter reading would otherwise stay on the old topic forever
+                String oldTopic = String(old.clientId) + "/" + old.topicGas;
+                publish(oldTopic, "", true);
+                publish(oldTopic + "/set", "", true);
+            }
+            if (idChanged)
+                clearDiscovery(old.clientId);
             else
                 publish(String(availabilityTopic), "offline", true);
             client.disconnect(); // graceful: queued messages are sent first

@@ -7,6 +7,10 @@ An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G
 3D-printed enclosure by 3dFabrik: [Thingiverse](https://www.thingiverse.com/thing:5594161)
 
 ## Changelog
+- **V 0.4.0** ⚠️ MQTT topic change
+  - Setting the meter reading via MQTT now uses `<clientID>/<mqtt_topic_gas>/set` (default `…/measurement/gas/set`) instead of the separately configured `<clientID>/measurement/current`. Home Assistant is switched over automatically via discovery; automations or scripts that publish to the old topic must be changed.
+  - The "Topic (current)" setting is removed; the set topic always follows the reading topic
+  - Changing the client ID or topic removes the retained messages of the old topics from the broker
 - **V 0.3.1**
   - MQTT: only one topic for the meter reading, `<clientID>/<mqtt_topic_gas>` (retained); the duplicate `…/state` topic is removed (its retained message is deleted on connect, Home Assistant is switched over via discovery, the entity and its history are kept)
   - Firmware version with git commit in the web UI footer (linked to GitHub), on the TFT and in Home Assistant
@@ -100,7 +104,7 @@ The upper button (next to the top-right corner) cycles through the pages, the lo
 - Status card with MQTT state, uptime, current volume
 - Footer with firmware version, git commit and link to this repository
 - Adjust meter value
-- MQTT settings (server/port/user/pass, clientID, topics), restart button, OTA upload
+- MQTT settings (server/port/user/pass, client ID, topic), restart button, OTA upload
 - Language toggle EN/DE; default follows browser language
 
 <img src="img/web-mobile-en.png" width="320" alt="Web UI">
@@ -110,31 +114,31 @@ All `POST` endpoints require the header `X-Requested-With: gaszaehler` (CSRF pro
 
 - `GET /api/status` → JSON with MQTT/Wi-Fi state, topics, uptime, masked password, client ID, current reading, flow, firmware version and commit.
 - `POST /api/consumption` with `value` (m3, e.g. `12345.67` or `12345,67`, max `999999.99`) → sets meter value and saves.
-- `POST /api/mqtt` with `server, port, username, password, clientid, topic, topic_current` → saves the settings, reconnects, republishes discovery. An empty `password` keeps the stored one (unless `username` is empty, then it is cleared).
+- `POST /api/mqtt` with `server, port, username, password, clientid, topic` → saves the settings, reconnects, republishes discovery. An empty `password` keeps the stored one (unless `username` is empty, then it is cleared).
 - `POST /api/restart` → replies then restarts the ESP32.
 - `POST /update` multipart form (field `firmware`) → OTA flash; device restarts on success.
 
 ### MQTT topics
 All values in m³ with two decimals (e.g. `141988.24`), published every 60 s and right after every correction.
 - Meter reading (retained): `<clientID>/<mqtt_topic_gas>` (default `measurement/gas`, e.g. `Gaszaehler_ABC/measurement/gas`). Retained, so Home Assistant has the value right after its own restart.
-- Correction (command) topic, subscribed: `<clientID>/<mqtt_topic_current>` (default `measurement/current`)
+- Set the meter reading (subscribed): `<clientID>/<mqtt_topic_gas>/set`, e.g. `Gaszaehler_ABC/measurement/gas/set`
 - Availability (retained): `<clientID>/availability` with `online`/`offline`
 
 ### Home Assistant
 - Discovery retained topics:
   - `homeassistant/sensor/<clientID>_gas_volume/config` (total, `device_class: gas`, `state_class: total_increasing`)
-  - `homeassistant/number/<clientID>_meter_set/config` (number entity to set the meter reading; writes to `<clientID>/<mqtt_topic_current>`, shows the current total)
+  - `homeassistant/number/<clientID>_meter_set/config` (number entity to set the meter reading; writes to `<clientID>/<mqtt_topic_gas>/set`, shows the current total)
 - State topic in discovery points to `<clientID>/<mqtt_topic_gas>`
 - Availability wired to `<clientID>/availability`
 
 ### Edit meter value
 - Via Home Assistant: the number entity "Set Meter Reading".
-- Via MQTT: publish the new value in m³ (e.g. `12345.67`) to `<clientID>/<mqtt_topic_current>`. Invalid values are ignored. A retained message is applied once when it arrives live, but ignored when the broker replays it after a reconnect; the device then deletes it from the broker.
+- Via MQTT: publish the new value in m³ (e.g. `12345.67`) to `<clientID>/<mqtt_topic_gas>/set`. Invalid values are ignored. A retained message is applied once when it arrives live, but ignored when the broker replays it after a reconnect; the device then deletes it from the broker.
 - Via web UI: card "Correct meter reading".
 - Via display: Device page → lower button, set the digits, then select "Save" (or "Cancel").
 
 ### Persistence
-- LittleFS (`/data.json`): pulse counter, offset, MQTT server/port/user/password, client ID, topics, web UI password. Written atomically (temporary file + rename).
+- LittleFS (`/data.json`): pulse counter, offset, MQTT server/port/user/password, client ID, topic, web UI password. Written atomically (temporary file + rename).
 - Wi-Fi credentials are stored by WiFiManager in the ESP32's NVS
 - Saved every 10 minutes (only if something changed), before restart/OTA, after configuration changes and via the "save" button on the gas page
 

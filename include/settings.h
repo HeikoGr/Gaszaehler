@@ -9,8 +9,8 @@ struct Settings
     char mqttUser[40] = "";
     char mqttPassword[40] = "";
     char clientId[64] = "";
+    // Meter reading on <clientId>/<topicGas> (retained), set it via <clientId>/<topicGas>/set
     char topicGas[64] = "measurement/gas";
-    char topicCorrection[64] = "measurement/current";
     char webPassword[40] = ""; // empty = web UI without login
 };
 

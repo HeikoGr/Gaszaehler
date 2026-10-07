@@ -2,7 +2,7 @@
 #pragma once
 #include <stdint.h>
 
-constexpr const char *FIRMWARE_VERSION = "V 0.3.1";
+constexpr const char *FIRMWARE_VERSION = "V 0.4.0";
 // "V 0.3.1 (abc1234)", "*" marks a build with uncommitted changes
 const char *firmwareVersionLong();
 constexpr const char *PROJECT_URL = "https://github.com/HeikoGr/Gaszaehler";

@@ -107,9 +107,8 @@ namespace
         doc["projectUrl"] = PROJECT_URL;
         doc["clientID"] = settings.clientId;
         doc["mqttTopicGas"] = String(settings.clientId) + "/" + settings.topicGas;
-        doc["mqttTopicCurrent"] = String(settings.clientId) + "/" + settings.topicCorrection;
+        doc["mqttTopicSet"] = String(settings.clientId) + "/" + settings.topicGas + "/set";
         doc["mqttTopicBase"] = settings.topicGas;
-        doc["mqttTopicCurrentBase"] = settings.topicCorrection;
         doc["offset"] = offset;
         doc["pulseCount"] = pulses;
         doc["mqttLastStatus"] = mqtt::status();
@@ -153,12 +152,10 @@ namespace
         String passArg = server.arg("password");
         String clientIdArg = server.arg("clientid");
         String topicArg = server.arg("topic");
-        String correctionArg = server.arg("topic_current");
         serverArg.trim();
         portArg.trim();
         clientIdArg.trim();
         topicArg.trim();
-        correctionArg.trim();
 
         Settings s = settings;
         if (serverArg.isEmpty() || serverArg.length() >= sizeof(s.mqttServer))
@@ -169,8 +166,7 @@ namespace
             return sendError(400, "username or password too long");
         if (clientIdArg.length() && (clientIdArg.indexOf('/') >= 0 || !isValidTopic(clientIdArg.c_str(), sizeof(s.clientId))))
             return sendError(400, "invalid client ID");
-        if ((topicArg.length() && !isValidTopic(topicArg.c_str(), sizeof(s.topicGas))) ||
-            (correctionArg.length() && !isValidTopic(correctionArg.c_str(), sizeof(s.topicCorrection))))
+        if (topicArg.length() && !isValidTopic(topicArg.c_str(), sizeof(s.topicGas)))
             return sendError(400, "invalid topic (no + or #, no empty levels)");
 
         strlcpy(s.mqttServer, serverArg.c_str(), sizeof(s.mqttServer));
@@ -184,13 +180,10 @@ namespace
             strlcpy(s.clientId, clientIdArg.c_str(), sizeof(s.clientId));
         if (topicArg.length())
             strlcpy(s.topicGas, topicArg.c_str(), sizeof(s.topicGas));
-        if (correctionArg.length())
-            strlcpy(s.topicCorrection, correctionArg.c_str(), sizeof(s.topicCorrection));
 
-        char oldClientId[sizeof(Settings::clientId)];
-        strlcpy(oldClientId, settings.clientId, sizeof(oldClientId));
+        Settings old = settings;
         settings = s;
-        app::settingsChanged(oldClientId);
+        app::settingsChanged(old);
 
         // The connection is established asynchronously; the dashboard polls /api/status
         JsonDocument doc;
@@ -201,7 +194,6 @@ namespace
         doc["mqttLastStatus"] = "connecting";
         doc["clientID"] = settings.clientId;
         doc["mqttTopicBase"] = settings.topicGas;
-        doc["mqttTopicCurrentBase"] = settings.topicCorrection;
         sendJson(200, doc);
     }
 
