@@ -142,15 +142,3 @@ bool SPIFFSManager::loadData(uint32_t &pulseCount, uint32_t &offset, char *mqtt_
 
     return true;
 }
-
-void SPIFFSManager::listFiles()
-{
-    File root = SPIFFS.open("/");
-    File file = root.openNextFile();
-    while (file)
-    {
-        Serial.print("FILE: ");
-        Serial.println(file.name());
-        file = root.openNextFile();
-    }
-}

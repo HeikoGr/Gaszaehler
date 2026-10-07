@@ -13,7 +13,6 @@
 #include "Ui.h"
 #include "SPIFFSManager.h"
 #include "functions.h" // Include the header file
-#include "screenshot.h"
 // Generated from web/index.html by scripts/embed_web.py (gzip-compressed)
 #include "generated/web_index_html.h"
 
@@ -27,12 +26,13 @@ const char *const version = "V 0.2.0";
 #define REED_PIN 32 // ADC1 pin
 #define BUTTON_1 35
 #define BUTTON_2 0
-#define HYSTERESIS_LOW 500.0
-#define HYSTERESIS_HIGH 4000.0
+// ADC thresholds (0..4095) with hysteresis against noise on the reed line
+#define HYSTERESIS_LOW 500
+#define HYSTERESIS_HIGH 4000
 
 // Time intervals
 constexpr unsigned long PUBLISH_INTERVAL = 1 * 60 * 1000;        // 60 seconds
-constexpr unsigned long INTERRUPT_INTERVAL = 50;                 // 50 milliseconds
+constexpr unsigned long REED_SAMPLE_INTERVAL = 50;               // 50 milliseconds
 constexpr unsigned long SAVE_INTERVAL = 10 * 60 * 1000;          // 10 minutes
 constexpr unsigned long WIFI_RECONNECT_INTERVAL = 1 * 20 * 1000; // 20 seconds
 constexpr unsigned long MQTT_RECONNECT_INTERVAL = 1 * 30 * 1000; // 30 seconds
@@ -66,18 +66,17 @@ struct ConnectionStatus
 
 struct TimeStamps
 {
-    volatile unsigned long lastPublishTime = 0;
-    volatile unsigned long lastSaveTime = 0;
-    volatile unsigned long lastInterruptTime = 0;
-    volatile unsigned long lastMQTTreconnectTime = 0;
-    volatile unsigned long lastWiFiconnectTime = 0;
+    unsigned long lastPublishTime = 0;
+    unsigned long lastSaveTime = 0;
+    unsigned long lastReedSampleTime = 0;
+    unsigned long lastMQTTreconnectTime = 0;
+    unsigned long lastWiFiconnectTime = 0;
 };
 
 ConnectionStatus connectionStatus;
 TimeStamps timeStamps;
 
-uint32_t gasVolume = 0;
-volatile bool lastState = false;
+bool lastState = false; // reed contact closed
 uint32_t prevPulseCount = 0;
 uint32_t prevOffset = 0;
 int displayMode = 0;
@@ -108,7 +107,6 @@ uint16_t *frameBuffer = nullptr;
 
 // Display
 TFT_eSPI tft = TFT_eSPI();
-String chipID;
 String clientID;
 
 // Upper limit for meter values (in 1/100 m3) so that pulseCount + offset never overflows
@@ -208,7 +206,6 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 // MQTT diagnostics
 String lastMqttStatus = "never";
-unsigned long lastMqttAttemptTime = 0; // millis()
 int lastMqttErrorCode = 0;
 // Home Assistant discovery published flag
 bool hassDiscoveryPublished = false;
@@ -218,7 +215,6 @@ bool webServerRunning = false;
 // Button2 instances
 Button2 button1;
 Button2 button2;
-// Button2 button2;
 
 
 void setup()
@@ -227,7 +223,7 @@ void setup()
     Serial.println("Starting gas meter " + String(version));
 
     // Retrieve the individual chip ID of the ESP32
-    chipID = String((uint32_t)ESP.getEfuseMac(), HEX);
+    String chipID = String((uint32_t)ESP.getEfuseMac(), HEX);
     chipID.toUpperCase();
     // Build the client name with the chip ID
     clientID = "Gaszaehler_" + chipID;
@@ -303,7 +299,7 @@ void setup()
 
     if (wm.autoConnect(AP_NAME))
     {
-        Serial.println("connected...yeey :)");
+        Serial.println("WiFi connected");
         timeStamps.lastWiFiconnectTime = millis();
     }
     else
@@ -321,8 +317,6 @@ void setup()
     // set Button2 handler
     button1.setTapHandler(handleButton1Click);
     button2.setClickHandler(handleButton2Click);
-    button2.setLongClickDetectedHandler(handleButton2LongPress);
-    button2.setLongClickTime(400);
 
     setupWebInterface();
     reconnect_mqtt();
@@ -366,10 +360,10 @@ void loop()
     }
 
     // Read reed contact analog and apply hysteresis
-    float voltage = analogRead(REED_PIN);
-    if (millis() - timeStamps.lastInterruptTime >= INTERRUPT_INTERVAL)
+    if (millis() - timeStamps.lastReedSampleTime >= REED_SAMPLE_INTERVAL)
     {
-        timeStamps.lastInterruptTime = millis();
+        timeStamps.lastReedSampleTime = millis();
+        int voltage = analogRead(REED_PIN);
         if (lastState && voltage <= HYSTERESIS_LOW)
         {
             lastState = false;
@@ -456,7 +450,6 @@ const char *mqttStateText(int state)
 // Function to reconnect to the MQTT broker
 boolean reconnect_mqtt()
 {
-    lastMqttAttemptTime = millis();
     timeStamps.lastMQTTreconnectTime = millis();
 
     if (client.connected())
@@ -516,7 +509,7 @@ void publishGasVolume()
         Serial.printf("Publishing not possible! MQTT not connected.\n");
         return;
     }
-    gasVolume = pulseCount + offset;
+    uint32_t gasVolume = pulseCount + offset;
     // Human readable (kept for backwards compatibility)
     String humanMsg = formatVolume(gasVolume);
     String mqttTopicHuman = clientID + "/" + mqtt_topic_gas;
@@ -788,13 +781,6 @@ void handleButton2Click(Button2 &btn)
         break;
     }
     return;
-}
-
-void handleButton2LongPress(Button2 &btn)
-{
-    Serial.println("Button 2 long press detected");
-    if (frameBuffer)
-        captureAndSendScreenshotRLE(frameBuffer, UI_WIDTH, UI_HEIGHT);
 }
 
 // Callback function for saving WiFiManager parameters

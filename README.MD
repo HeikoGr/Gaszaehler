@@ -2,7 +2,7 @@
 
 > ⚠️ **Important Notice: This project contains substantial AI-generated code.** Review, test, and audit all firmware, web UI, and documentation before using it in production or safety-relevant contexts. Treat defaults and generated logic as untrusted until verified.
 
-An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G4), counts pulses and publishes consumption via MQTT. It provides a small web UI (English/German), Home Assistant MQTT discovery (retained), and persists Wi-Fi/MQTT settings plus counter state in SPIFFS.
+An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G4), counts pulses and publishes consumption via MQTT. It provides a small web UI (English/German), Home Assistant MQTT discovery (retained), and persists MQTT settings plus counter state in SPIFFS.
 
 3D-printed enclosure by 3dFabrik: [Thingiverse](https://www.thingiverse.com/thing:5594161)
 
@@ -13,6 +13,7 @@ An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G
   - Home Assistant: `number` entity to set the meter reading (replaces the "current value" sensor)
   - Config portal timeout 300 s; dashboard and portal no longer compete for port 80
   - Web UI moved to `web/index.html`; screenshots of TFT and web UI are generated from the source (`tools/screenshots`)
+  - Removed: serial RLE screenshot (long press) and `contrib/` decoder, replaced by the generated screenshots
 - **V 0.1.1** (audit fixes)
   - Fix: autosave interval was 100 minutes instead of 10; state is now also saved before restart/OTA
   - Fix: buffer overflow on the "edit meter value" screen and in the WiFiManager parameter copy
@@ -38,10 +39,10 @@ An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G
 
 ## Features
 - Pulse counting via reed switch, hysteresis for noise rejection
-- TFT display with multiple views (Gas, Wi-Fi, MQTT, Misc, Edit meter)
-- MQTT publishing with retained numeric state (`<clientID>/measurement/gas/state`) and Home Assistant discovery
-- Configurable Wi-Fi and MQTT via web UI; settings and counter persisted to SPIFFS
-- Web UI in English/German, mobile-friendly layout, restart button, OTA update form
+- TFT display: meter reading with flow estimate, Wi-Fi, MQTT and device pages, local editing of the meter value, setup instructions while the config portal is active
+- MQTT publishing with retained numeric state (`<clientID>/measurement/gas/state`) and Home Assistant discovery (sensor + number entity to set the reading)
+- Wi-Fi setup via captive portal; MQTT via portal or web UI; settings and counter persisted to SPIFFS
+- Web UI in English/German, mobile-friendly layout, restart button, OTA update form, optional login
 
 ## Hardware
 - Diaphragm gas meter with magnetic pulse output
@@ -54,13 +55,13 @@ Wiring note: Reed contact to 3.3 V; GPIO32 pulled down with 1 kΩ. On rising edg
 <img src="img/shematic.png" width="240" alt="Wiring schematic">
 
 ## Build
-- Preferred: VS Code + PlatformIO. Import the project, adjust Wi-Fi/MQTT defaults if needed, then build & upload.
+- VS Code + PlatformIO: open the project, then build & upload. Wi-Fi and MQTT are configured on the device (see below), nothing needs to be edited in the source.
   ```
   platformio run --environment lilygo-t-display
   platformio run --target upload --environment lilygo-t-display
   platformio device monitor --environment lilygo-t-display
   ```
-- Arduino IDE: rename `src/main.cpp` to `Gaszaehler.ino` and copy the files from `include/` and `src/` next to it; install the libraries listed in `platformio.ini`.
+- The Arduino IDE is not supported: the build runs `scripts/embed_web.py` to embed the web UI and uses the local library `lib/ui`.
 
 ## First-time setup (tzapu WiFiManager)
 - Power on the device; no known Wi-Fi starts the captive portal `GaszaehlerAP`.
@@ -100,25 +101,29 @@ All `POST` endpoints require the header `X-Requested-With: gaszaehler` (CSRF pro
 - `POST /update` multipart form (field `firmware`) → OTA flash; device restarts on success.
 
 ### MQTT topics
-- Human-readable: `<clientID>/<mqtt_topic_gas>` (default `measurement/gas`)
-- Numeric retained state: `<clientID>/<mqtt_topic_gas>/state` (e.g., `Gaszaehler_ABC/measurement/gas/state`)
-- Current value topic: `<clientID>/<mqtt_topic_current>` (default `measurement/current`)
+All values in m³ with two decimals (e.g. `141988.24`), published every 60 s and after changes.
+- State (retained): `<clientID>/<mqtt_topic_gas>/state` (e.g. `Gaszaehler_ABC/measurement/gas/state`)
+- Same value, not retained (kept for compatibility with older setups): `<clientID>/<mqtt_topic_gas>` (default `measurement/gas`)
+- Correction (command) topic, subscribed: `<clientID>/<mqtt_topic_current>` (default `measurement/current`)
 - Availability (retained): `<clientID>/availability` with `online`/`offline`
 
 ### Home Assistant
 - Discovery retained topics:
   - `homeassistant/sensor/<clientID>_gas_volume/config` (total, `device_class: gas`, `state_class: total_increasing`)
   - `homeassistant/number/<clientID>_meter_set/config` (number entity to set the meter reading; writes to `<clientID>/<mqtt_topic_current>`, shows the current total)
-- State topic in discovery points to `<clientID>/measurement/gas/state`
+- State topic in discovery points to `<clientID>/<mqtt_topic_gas>/state`
 - Availability wired to `<clientID>/availability`
 
 ### Edit meter value
-- Via MQTT: publish the new value in m³ (e.g. `12345.67`) to `<clientID>/measurement/current`. Invalid values are ignored; the device clears a retained message on this topic after applying it.
-- Via display: go to “Edit meter value”, adjust, then save; cancels pulse counter to align with new offset.
+- Via Home Assistant: the number entity "Set Meter Reading".
+- Via MQTT: publish the new value in m³ (e.g. `12345.67`) to `<clientID>/<mqtt_topic_current>`. Invalid values are ignored; the device clears a retained message on this topic after applying it.
+- Via web UI: card "Correct meter reading".
+- Via display: Device page → lower button, set the digits, then select "Save" (or "Cancel").
 
-### Persistence (SPIFFS)
-- Stored: pulse counter, offset, Wi-Fi/MQTT credentials, clientID, topic bases
-- Autosave interval and manual save via display button
+### Persistence
+- SPIFFS (`/data.json`): pulse counter, offset, MQTT server/port/user/password, client ID, topics, web UI password
+- Wi-Fi credentials are stored by WiFiManager in the ESP32's NVS
+- Saved every 10 minutes (only if something changed), before restart/OTA, after configuration changes and via the "save" button on the gas page
 
 ## Development
 - `src/main.cpp`: firmware logic (pulse counting, MQTT, web server, buttons)
@@ -136,7 +141,6 @@ npm run all                                 # TFT screens (C++ on the PC) + web 
 - TFT: `lcd_screenshots.py` compiles `lib/ui` together with `render_lcd.cpp` (example data for every screen) using the local C++ compiler and writes `img/lcd-*.png` (pixel-exact, 2× scaled).
 - Web: `web_screenshots.js` opens `web/index.html` with the device API mocked from `status.fixture.json` and writes `img/web-*.png`.
 - CI runs the same scripts on every push and uploads the images as the `screenshots` artifact.
-- On the device, a long press on the lower button still dumps the current screen to the serial console (decode with `contrib/rle_to_rgb565_to_png.html`).
 
 ## Alternatives
 [ArduCounter](https://github.com/StefanStrobel/ArduCounter/) counts on multiple pins, supports displays, and integrates with FHEM; does not natively support MQTT.

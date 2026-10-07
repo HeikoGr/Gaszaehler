@@ -110,8 +110,8 @@ input, select, textarea { width: 100%; box-sizing: border-box; }
 <main>
     <section class="header" style="display:flex;align-items:center;justify-content:space-between;">
         <div>
-            <h1 id="hdr-title">Gas Meter</h1>
-            <p id="hdr-sub">Live status & control</p>
+            <h1 id="hdr-title" data-i18n="title">Gas Meter</h1>
+            <p id="hdr-sub" data-i18n="subtitle">Live status & control</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
             <!-- Language toggle: default English, click DE flag for German -->
@@ -126,16 +126,16 @@ input, select, textarea { width: 100%; box-sizing: border-box; }
         <p id="uptime" class="muted"></p>
     </section>
     <section class="card">
-        <h3 id="lbl-correct">Correct meter reading</h3>
+        <h3 id="lbl-correct" data-i18n="correctReading">Correct meter reading</h3>
         <form id="consumption-form">
-            <label for="consumption" id="lbl-new-val">New value (m³)</label>
+            <label for="consumption" id="lbl-new-val" data-i18n="newValue">New value (m³)</label>
             <input type="text" inputmode="decimal" pattern="[0-9\s\.,'`]+" id="consumption" name="value" required>
-            <button type="submit" id="btn-save">Save</button>
+            <button type="submit" id="btn-save" data-i18n="save">Save</button>
             <span class="feedback" id="consumption-feedback"></span>
         </form>
     </section>
     <section class="card">
-        <h3 id="lbl-mqtt">MQTT Parameters</h3>
+        <h3 id="lbl-mqtt" data-i18n="mqttParams">MQTT Parameters</h3>
         <form id="mqtt-form">
             <div class="grid-two">
                 <div>
@@ -149,11 +149,11 @@ input, select, textarea { width: 100%; box-sizing: border-box; }
             </div>
             <div class="grid-two">
                 <div>
-                    <label for="mqtt-user" id="lbl-user">User</label>
+                    <label for="mqtt-user" id="lbl-user" data-i18n="user">User</label>
                     <input type="text" id="mqtt-user" name="username" autocomplete="username">
                 </div>
                 <div>
-                    <label for="mqtt-password" id="lbl-password">Password</label>
+                    <label for="mqtt-password" id="lbl-password" data-i18n="password">Password</label>
                     <input type="password" id="mqtt-password" name="password" autocomplete="new-password">
                 </div>
             </div>
@@ -163,34 +163,34 @@ input, select, textarea { width: 100%; box-sizing: border-box; }
                     <input type="text" id="mqtt-clientid" name="clientid">
                 </div>
                 <div>
-                    <label for="mqtt-topic" id="lbl-topic">Topic (base)</label>
+                    <label for="mqtt-topic" id="lbl-topic" data-i18n="topicBase">Topic (base)</label>
                     <input type="text" id="mqtt-topic" name="topic" placeholder="measurement/gas">
                 </div>
             </div>
             <div class="grid-two">
                 <div></div>
                 <div>
-                    <label for="mqtt-topic-current" id="lbl-topic-current">Topic (current)</label>
+                    <label for="mqtt-topic-current" id="lbl-topic-current" data-i18n="topicCurrent">Topic (current)</label>
                     <input type="text" id="mqtt-topic-current" name="topic_current" placeholder="measurement/current">
                 </div>
             </div>
-            <button type="submit" id="btn-apply">Apply & Connect</button>
+            <button type="submit" id="btn-apply" data-i18n="apply">Apply & Connect</button>
             <span class="feedback" id="mqtt-feedback"></span>
         </form>
     </section>
     <section class="card">
-        <h3 id="lbl-ota">OTA Update</h3>
+        <h3 id="lbl-ota" data-i18n="ota">OTA Update</h3>
         <form id="ota-form" action="/update" method="POST" enctype="multipart/form-data">
-            <label for="firmware" id="lbl-fw">Firmware (.bin)</label>
+            <label for="firmware" id="lbl-fw" data-i18n="firmware">Firmware (.bin)</label>
             <input type="file" id="firmware" name="firmware" accept=".bin" required>
-            <button type="submit" id="btn-upload">Upload & Flash</button>
+            <button type="submit" id="btn-upload" data-i18n="upload">Upload & Flash</button>
             <span class="feedback" id="ota-feedback"></span>
         </form>
     </section>
     <section class="card">
-        <h3 id="lbl-restart">Device Control</h3>
-        <p class="muted" id="restart-desc">Remote restart of the device (will reconnect to WiFi/MQTT on boot)</p>
-        <button id="btn-restart">Restart Device</button>
+        <h3 id="lbl-restart" data-i18n="deviceControl">Device Control</h3>
+        <p class="muted" id="restart-desc" data-i18n="restartDesc">Remote restart of the device (will reconnect to WiFi/MQTT on boot)</p>
+        <button id="btn-restart" data-i18n="restart">Restart Device</button>
         <span class="feedback" id="restart-feedback"></span>
     </section>
 </main>
@@ -289,7 +289,23 @@ const translations = {
         otaFailed: 'Update failed',
         passwordHint: 'leave empty to keep',
         lastTry: 'last try',
-        error: 'Error'
+        error: 'Error',
+        title: 'Gas Meter',
+        subtitle: 'Live status & control',
+        correctReading: 'Correct meter reading',
+        newValue: 'New value (m³)',
+        save: 'Save',
+        mqttParams: 'MQTT Parameters',
+        apply: 'Apply & Connect',
+        ota: 'OTA Update',
+        firmware: 'Firmware (.bin)',
+        upload: 'Upload & Flash',
+        deviceControl: 'Device Control',
+        restart: 'Restart Device',
+        user: 'User',
+        password: 'Password',
+        topicBase: 'Topic (base)',
+        topicCurrent: 'Topic (current)'
     },
     de: {
         consuming: 'Wird übertragen...',
@@ -308,7 +324,23 @@ const translations = {
         otaFailed: 'Update fehlgeschlagen',
         passwordHint: 'leer lassen = unverändert',
         lastTry: 'letzter Versuch',
-        error: 'Fehler'
+        error: 'Fehler',
+        title: 'Gaszähler',
+        subtitle: 'Live-Status & Steuerung',
+        correctReading: 'Zählerstand korrigieren',
+        newValue: 'Neuer Wert (m³)',
+        save: 'Speichern',
+        mqttParams: 'MQTT Parameter',
+        apply: 'Übernehmen & Verbinden',
+        ota: 'OTA Update',
+        firmware: 'Firmware (.bin)',
+        upload: 'Upload & Flash',
+        deviceControl: 'Gerätesteuerung',
+        restart: 'Neustart',
+        user: 'Benutzer',
+        password: 'Passwort',
+        topicBase: 'Topic (Basis)',
+        topicCurrent: 'Topic (Korrektur)'
     }
 };
 // Pick saved language or fallback to browser preference
@@ -439,43 +471,7 @@ function setLanguage(lang) {
     setLang(lang);
     document.documentElement.lang = currentLang;
     nf = new Intl.NumberFormat(currentLang === 'de' ? 'de-DE' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (currentLang === 'en') {
-        document.getElementById('hdr-title').textContent = 'Gas Meter';
-        document.getElementById('hdr-sub').textContent = 'Live status & control';
-        document.getElementById('lbl-correct').textContent = 'Correct meter reading';
-        document.getElementById('lbl-new-val').textContent = 'New value (m³)';
-        document.getElementById('btn-save').textContent = 'Save';
-        document.getElementById('lbl-mqtt').textContent = 'MQTT Parameters';
-        document.getElementById('btn-apply').textContent = 'Apply & Connect';
-        document.getElementById('lbl-ota').textContent = 'OTA Update';
-        document.getElementById('lbl-fw').textContent = 'Firmware (.bin)';
-        document.getElementById('btn-upload').textContent = 'Upload & Flash';
-        document.getElementById('lbl-restart').textContent = 'Device Control';
-        document.getElementById('btn-restart').textContent = 'Restart Device';
-        document.getElementById('restart-desc').textContent = t('restartDesc');
-        document.getElementById('lbl-user').textContent = 'User';
-        document.getElementById('lbl-password').textContent = 'Password';
-        document.getElementById('lbl-topic').textContent = 'Topic (base)';
-        document.getElementById('lbl-topic-current').textContent = 'Topic (current)';
-    } else {
-        document.getElementById('hdr-title').textContent = 'Gaszähler';
-        document.getElementById('hdr-sub').textContent = 'Live-Status & Steuerung';
-        document.getElementById('lbl-correct').textContent = 'Zählerstand korrigieren';
-        document.getElementById('lbl-new-val').textContent = 'Neuer Wert (m³)';
-        document.getElementById('btn-save').textContent = 'Speichern';
-        document.getElementById('lbl-mqtt').textContent = 'MQTT Parameter';
-        document.getElementById('btn-apply').textContent = 'Übernehmen & Verbinden';
-        document.getElementById('lbl-ota').textContent = 'OTA Update';
-        document.getElementById('lbl-fw').textContent = 'Firmware (.bin)';
-        document.getElementById('btn-upload').textContent = 'Upload & Flash';
-        document.getElementById('lbl-restart').textContent = 'Gerätsteuerung';
-        document.getElementById('btn-restart').textContent = 'Neustart';
-        document.getElementById('restart-desc').textContent = t('restartDesc');
-        document.getElementById('lbl-user').textContent = 'Benutzer';
-        document.getElementById('lbl-password').textContent = 'Passwort';
-        document.getElementById('lbl-topic').textContent = 'Topic (Basis)';
-        document.getElementById('lbl-topic-current').textContent = 'Topic (Korrektur)';
-    }
+    document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
     // force re-formatting of the prefilled value in the new locale
     consumptionInput.value = '';
     refreshStatus();
