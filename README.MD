@@ -101,7 +101,7 @@ All `POST` endpoints require the header `X-Requested-With: gaszaehler` (CSRF pro
 - `POST /update` multipart form (field `firmware`) → OTA flash; device restarts on success.
 
 ### MQTT topics
-All values in m³ with two decimals (e.g. `141988.24`), published every 60 s and after changes.
+All values in m³ with two decimals (e.g. `141988.24`), published every 60 s and right after every correction.
 - State (retained): `<clientID>/<mqtt_topic_gas>/state` (e.g. `Gaszaehler_ABC/measurement/gas/state`)
 - Same value, not retained (kept for compatibility with older setups): `<clientID>/<mqtt_topic_gas>` (default `measurement/gas`)
 - Correction (command) topic, subscribed: `<clientID>/<mqtt_topic_current>` (default `measurement/current`)
