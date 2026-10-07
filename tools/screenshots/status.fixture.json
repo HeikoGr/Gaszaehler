@@ -9,7 +9,7 @@
   "maskedPassword": "********",
   "wifiConnected": true,
   "uptimeSeconds": 274620,
-  "version": "V 0.2.0",
+  "version": "V 0.3.0",
   "clientID": "Gaszaehler_7C9EBD12",
   "mqttTopicGas": "Gaszaehler_7C9EBD12/measurement/gas",
   "mqttTopicCurrent": "Gaszaehler_7C9EBD12/measurement/current",

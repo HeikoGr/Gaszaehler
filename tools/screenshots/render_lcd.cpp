@@ -21,7 +21,7 @@ static UiState baseState()
     s.mqttPort = "1883";
     s.clientId = "Gaszaehler_7C9EBD12";
     s.mqttStatus = "connected";
-    s.version = "V 0.2.0";
+    s.version = "V 0.3.0";
     s.uptimeSeconds = 3 * 86400 + 4 * 3600 + 17 * 60;
     s.pulseCount = 1834;
     s.editValue = 14198824;

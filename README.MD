@@ -2,11 +2,18 @@
 
 > ⚠️ **Important Notice: This project contains substantial AI-generated code.** Review, test, and audit all firmware, web UI, and documentation before using it in production or safety-relevant contexts. Treat defaults and generated logic as untrusted until verified.
 
-An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G4), counts pulses and publishes consumption via MQTT. It provides a small web UI (English/German), Home Assistant MQTT discovery (retained), and persists MQTT settings plus counter state in SPIFFS.
+An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G4), counts pulses and publishes consumption via MQTT. It provides a small web UI (English/German), Home Assistant MQTT discovery (retained), and persists MQTT settings plus counter state in LittleFS.
 
 3D-printed enclosure by 3dFabrik: [Thingiverse](https://www.thingiverse.com/thing:5594161)
 
 ## Changelog
+- **V 0.3.0**
+  - Platform: Arduino-ESP32 core 3.x via [pioarduino](https://github.com/pioarduino/platform-espressif32) (the official PlatformIO platform only ships the outdated core 2.x)
+  - Libraries: [espMqttClient](https://github.com/bertmelis/espMqttClient) replaces the unmaintained PubSubClient (MQTT runs in its own task, connecting never blocks the main loop); [LovyanGFX](https://github.com/lovyan03/LovyanGFX) replaces TFT_eSPI
+  - Pulse counting runs in its own FreeRTOS task, independent of Wi-Fi/MQTT/web/flash activity in the main loop
+  - Storage: LittleFS instead of SPIFFS; existing SPIFFS data is migrated automatically on the first boot
+  - MQTT corrections replayed by the broker (retained) are ignored using the MQTT retain flag
+  - Code split into modules (`meter`, `settings`, `portal`, `mqtt`, `web`, `display`, `util`)
 - **V 0.2.0**
   - New TFT layout (anti-aliased fonts, flow estimate, flicker-free), setup screen while the config portal is active, cancel option when editing the meter value
   - Optional web UI/OTA password (set in the config portal)
@@ -41,7 +48,7 @@ An ESP32 TTGO T-Display reads a reed switch on a diaphragm gas meter (e.g., BK-G
 - Pulse counting via reed switch, hysteresis for noise rejection
 - TFT display: meter reading with flow estimate, Wi-Fi, MQTT and device pages, local editing of the meter value, setup instructions while the config portal is active
 - MQTT publishing with retained numeric state (`<clientID>/measurement/gas/state`) and Home Assistant discovery (sensor + number entity to set the reading)
-- Wi-Fi setup via captive portal; MQTT via portal or web UI; settings and counter persisted to SPIFFS
+- Wi-Fi setup via captive portal; MQTT via portal or web UI; settings and counter persisted to LittleFS
 - Web UI in English/German, mobile-friendly layout, restart button, OTA update form, optional login
 
 ## Hardware
@@ -55,6 +62,9 @@ Wiring note: Reed contact to 3.3 V; GPIO32 pulled down with 1 kΩ. On rising edg
 <img src="img/shematic.png" width="240" alt="Wiring schematic">
 
 ## Build
+PlatformIO downloads the [pioarduino](https://github.com/pioarduino/platform-espressif32) platform (Arduino-ESP32 core 3.x) on the first build.
+
+**Updating from firmware ≤ 0.2.0:** an OTA update is fine. On the first boot the stored data is moved from SPIFFS to LittleFS automatically (same flash partition). The partition table is unchanged.
 - VS Code + PlatformIO: open the project, then build & upload. Wi-Fi and MQTT are configured on the device (see below), nothing needs to be edited in the source.
   ```
   platformio run --environment lilygo-t-display
@@ -96,7 +106,7 @@ All `POST` endpoints require the header `X-Requested-With: gaszaehler` (CSRF pro
 
 - `GET /api/status` → JSON with MQTT/Wi-Fi state, topics, uptime, masked password, client ID, current reading.
 - `POST /api/consumption` with `value` (m3, e.g. `12345.67` or `12345,67`, max `999999.99`) → sets meter value and saves.
-- `POST /api/mqtt` with `server, port, username, password, clientid, topic, topic_current` → saves to SPIFFS, reconnects, republishes discovery. An empty `password` keeps the stored one (unless `username` is empty, then it is cleared).
+- `POST /api/mqtt` with `server, port, username, password, clientid, topic, topic_current` → saves the settings, reconnects, republishes discovery. An empty `password` keeps the stored one (unless `username` is empty, then it is cleared).
 - `POST /api/restart` → replies then restarts the ESP32.
 - `POST /update` multipart form (field `firmware`) → OTA flash; device restarts on success.
 
@@ -116,17 +126,26 @@ All values in m³ with two decimals (e.g. `141988.24`), published every 60 s and
 
 ### Edit meter value
 - Via Home Assistant: the number entity "Set Meter Reading".
-- Via MQTT: publish the new value in m³ (e.g. `12345.67`) to `<clientID>/<mqtt_topic_current>`. Invalid values are ignored; the device clears a retained message on this topic after applying it.
+- Via MQTT: publish the new value in m³ (e.g. `12345.67`) to `<clientID>/<mqtt_topic_current>`. Invalid values are ignored. A retained message is applied once when it arrives live, but ignored when the broker replays it after a reconnect; the device then deletes it from the broker.
 - Via web UI: card "Correct meter reading".
 - Via display: Device page → lower button, set the digits, then select "Save" (or "Cancel").
 
 ### Persistence
-- SPIFFS (`/data.json`): pulse counter, offset, MQTT server/port/user/password, client ID, topics, web UI password
+- LittleFS (`/data.json`): pulse counter, offset, MQTT server/port/user/password, client ID, topics, web UI password. Written atomically (temporary file + rename).
 - Wi-Fi credentials are stored by WiFiManager in the ESP32's NVS
 - Saved every 10 minutes (only if something changed), before restart/OTA, after configuration changes and via the "save" button on the gas page
 
 ## Development
-- `src/main.cpp`: firmware logic (pulse counting, MQTT, web server, buttons)
+- `src/` (headers in `include/`):
+  - `main.cpp`: setup/loop and actions that span modules (`app.h`: save, restart, Wi-Fi reset)
+  - `meter`: pulse counting task (reed contact sampled every 50 ms with hysteresis), flow estimate
+  - `settings`: settings struct, LittleFS storage, SPIFFS migration
+  - `portal`: Wi-Fi and WiFiManager config portal
+  - `mqtt`: espMqttClient, publishing, corrections, Home Assistant discovery
+  - `web`: dashboard, JSON API, login, CSRF protection, OTA
+  - `display`: LovyanGFX setup for the T-Display, buttons, page logic
+  - `util`: parsing/formatting without Arduino dependencies
+  - `config.h`: pins, intervals, limits
 - `lib/ui/`: display layouts and a small RGB565 framebuffer library with anti-aliased fonts. It has no Arduino dependencies, so the screens can be rendered on a PC.
 - `web/index.html`: web UI; `scripts/embed_web.py` gzips it into the firmware at build time (generated header in `include/generated/`, not committed)
 - `tools/fontgen/`: regenerates the font headers in `lib/ui/fonts/` from the [Inter](https://rsms.me/inter/) font (SIL Open Font License 1.1)
