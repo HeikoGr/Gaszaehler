@@ -223,7 +223,7 @@ namespace display
         button1.begin(BUTTON_1, INPUT_PULLUP, true);
         button2.begin(BUTTON_2, INPUT_PULLUP, true);
         button1.setTapHandler(onButton1);
-        button2.setClickHandler(onButton2);
+        button2.setTapHandler(onButton2); // tap fires on every release; click would wait for/skip double and long clicks
     }
 
     void loop()
