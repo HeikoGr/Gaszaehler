@@ -129,7 +129,7 @@ namespace
         }
         c.drawText(MARGIN, 103, line, font_small, MUTED);
 
-        drawFooter(c, s, "save ›");
+        drawFooter(c, s, "edit value ›");
     }
 
     void drawWifi(Canvas &c, const UiState &s)
@@ -166,7 +166,7 @@ namespace
             c.drawText(RIGHT, 42, fitText(status, sizeof(status), s.mqttStatus, font_small, 150), font_small, BAD, Align::Right);
         }
         drawField(c, MARGIN, 81, "Client ID", s.clientId);
-        drawFooter(c, s, "save ›");
+        drawFooter(c, s, "save & send ›");
     }
 
     void drawInfo(Canvas &c, const UiState &s)
@@ -178,7 +178,7 @@ namespace
         drawField(c, MARGIN, 42, "Firmware", s.version);
         drawField(c, MARGIN, 81, "Uptime", uptime, TEXT, COLUMN_2 - MARGIN - 6);
         drawField(c, COLUMN_2, 81, "Pulses", pulses);
-        drawFooter(c, s, "edit value ›");
+        drawFooter(c, s, nullptr);
     }
 
     void drawEdit(Canvas &c, const UiState &s)

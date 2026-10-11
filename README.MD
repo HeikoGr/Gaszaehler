@@ -99,8 +99,8 @@ The upper button (next to the top-right corner) cycles through the pages, the lo
 
 | | |
 |---|---|
-| <img src="img/lcd-gas.png" width="360" alt="Gas screen"><br>**Gas:** meter reading, flow estimate, time since last pulse. Lower button: save & publish | <img src="img/lcd-wifi.png" width="360" alt="WiFi screen"><br>**WiFi:** network, signal, IP. Lower button twice: reset Wi-Fi |
-| <img src="img/lcd-mqtt.png" width="360" alt="MQTT screen"><br>**MQTT:** broker and client ID (errors are shown in red) | <img src="img/lcd-info.png" width="360" alt="Device screen"><br>**Device:** firmware, uptime, pulses. Lower button: edit meter value |
+| <img src="img/lcd-gas.png" width="360" alt="Gas screen"><br>**Gas:** meter reading, flow estimate, time since last pulse. Lower button: edit meter value | <img src="img/lcd-wifi.png" width="360" alt="WiFi screen"><br>**WiFi:** network, signal, IP. Lower button twice: reset Wi-Fi |
+| <img src="img/lcd-mqtt.png" width="360" alt="MQTT screen"><br>**MQTT:** broker and client ID (errors are shown in red). Lower button: save & send | <img src="img/lcd-info.png" width="360" alt="Device screen"><br>**Device:** firmware, uptime, pulses |
 | <img src="img/lcd-edit.png" width="360" alt="Edit screen"><br>**Edit meter value:** upper button moves the cursor, lower button increments the digit | <img src="img/lcd-portal.png" width="360" alt="Setup screen"><br>**WiFi setup:** shown while the config portal is active |
 
 ### Web UI (served by the device)
@@ -138,12 +138,12 @@ All values in m³ with two decimals (e.g. `141988.24`), published every 60 s and
 - Via Home Assistant: the number entity "Set Meter Reading".
 - Via MQTT: publish the new value in m³ (e.g. `12345.67`) to `<clientID>/<mqtt_topic_gas>/set`. Invalid values are ignored. A retained message is applied once when it arrives live, but ignored when the broker replays it after a reconnect; the device then deletes it from the broker.
 - Via web UI: card "Correct meter reading".
-- Via display: Device page → lower button, set the digits, then select "Save" (or "Cancel").
+- Via display: Gas page → lower button, set the digits, then select "Save" (or "Cancel").
 
 ### Persistence
 - LittleFS (`/data.json`): pulse counter, offset, MQTT server/port/user/password, client ID, topic, web UI password. Written atomically (temporary file + rename).
 - Wi-Fi credentials are stored by WiFiManager in the ESP32's NVS
-- Saved every 10 minutes (only if something changed), before restart/OTA, after configuration changes and via the "save" button on the gas page
+- Saved every 10 minutes (only if something changed), before restart/OTA, after configuration changes and via the "save & send" button on the MQTT page
 
 ## Development
 - `src/` (headers in `include/`):

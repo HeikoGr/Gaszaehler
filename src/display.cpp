@@ -170,7 +170,7 @@ namespace
                 app::resetWifi();
             wifiResetRequest = millis();
             break;
-        case PAGE_INFO:
+        case PAGE_GAS:
             startEdit();
             break;
         case PAGE_EDIT:
@@ -182,16 +182,18 @@ namespace
             }
             else if (editCursor == UI_EDIT_CANCEL)
             {
-                page = PAGE_INFO;
+                page = PAGE_GAS;
             }
             else
             {
                 incrementDigit();
             }
             break;
-        default: // gas and MQTT page: save and publish now
+        case PAGE_MQTT: // save and publish now
             app::save();
             mqtt::publishState();
+            break;
+        default: // device page: no action
             break;
         }
         updateRequested = true;
