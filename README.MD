@@ -80,6 +80,7 @@ PlatformIO downloads the [pioarduino](https://github.com/pioarduino/platform-esp
   platformio run --target upload --environment lilygo-t-display
   platformio device monitor --environment lilygo-t-display
   ```
+- Prebuilt firmware: every push to `main` is published under [Releases](https://github.com/HeikoGr/Gaszaehler/releases) as `build-<commit>` (the 5 newest are kept). `gaszaehler-<commit>-ota.bin` is for the web UI update, `gaszaehler-<commit>-factory.bin` for the first USB flash at offset `0x0`.
 - The Arduino IDE is not supported: the build runs `scripts/embed_web.py` to embed the web UI and uses the local library `lib/ui`.
 
 ## First-time setup (tzapu WiFiManager)

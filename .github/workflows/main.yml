@@ -24,6 +24,17 @@ jobs:
         submodules: 'true'
     - name: Set up Python
       uses: actions/setup-python@v7
+    # Platform, toolchain and libraries (~/.platformio, .pio/libdeps) plus the compiled objects
+    # (.pio/build) are reused between runs. The cache is several GB, so it is only saved again when
+    # platformio.ini changes; changed sources are rebuilt anyway (SCons compares content hashes).
+    - name: Cache PlatformIO
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cache/pip
+          ~/.platformio
+          .pio
+        key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -39,6 +50,57 @@ jobs:
         name: firmware
         path: |
           .pio/build/**/firmware.bin
+          .pio/build/**/firmware.factory.bin
+
+  # Pushes to main publish the firmware as a GitHub release tagged build-<commit>;
+  # only the newest KEEP_RELEASES of these releases (and their tags) are kept
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      KEEP_RELEASES: 5
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/download-artifact@v7
+      with:
+        name: firmware
+        path: firmware
+    - name: Create release
+      run: |
+        sha=$(git rev-parse --short=7 HEAD)
+        version=$(sed -n 's/.*FIRMWARE_VERSION = "\(.*\)";.*/\1/p' include/config.h)
+        tag="build-$sha"
+        dir=$(dirname "$(find firmware -name firmware.bin | head -1)")
+        cp "$dir/firmware.bin" "gaszaehler-$sha-ota.bin"
+        cp "$dir/firmware.factory.bin" "gaszaehler-$sha-factory.bin"
+        cat > notes.md <<NOTES
+        $(git log -1 --format=%s)
+
+        - \`gaszaehler-$sha-ota.bin\`: update via the web UI (OTA)
+        - \`gaszaehler-$sha-factory.bin\`: first flash over USB at offset 0x0, e.g. \`esptool.py write_flash 0x0 gaszaehler-$sha-factory.bin\`
+        NOTES
+        if gh release view "$tag" > /dev/null 2>&1; then
+          gh release upload "$tag" gaszaehler-$sha-*.bin --clobber
+        else
+          gh release create "$tag" gaszaehler-$sha-*.bin --target "$GITHUB_SHA" \
+            --title "$version ($sha)" --notes-file notes.md
+        fi
+    - name: Delete old releases
+      run: |
+        gh release list --limit 100 --json tagName,createdAt \
+          --jq "[.[] | select(.tagName | startswith(\"build-\"))] | sort_by(.createdAt) | reverse | .[$KEEP_RELEASES:] | .[].tagName" |
+        while read -r tag; do
+          echo "Deleting release $tag"
+          gh release delete "$tag" --yes --cleanup-tag
+        done
 
   screenshots:
     runs-on: ubuntu-latest
