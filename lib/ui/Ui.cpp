@@ -60,15 +60,16 @@ namespace
 
     void drawHeader(Canvas &c, const char *title, int page, const char *topHint)
     {
-        int x = MARGIN + c.drawText(MARGIN, 17, title, font_title, TEXT);
+        c.drawText(MARGIN, 17, title, font_title, TEXT);
+        int x = RIGHT; // page dots sit left of the hint, so they keep their place whatever the title
+        if (topHint)
+            x -= c.drawText(RIGHT, 16, topHint, font_small, MUTED, Align::Right) + 10;
         if (page >= 0)
         {
-            x += 10;
+            x -= 2 + (UI_PAGE_COUNT - 1) * 9; // center of the first dot
             for (int i = 0; i < UI_PAGE_COUNT; i++, x += 9)
                 c.fillCircle(x, 11, 2, i == page ? ACCENT : LINE);
         }
-        if (topHint)
-            c.drawText(RIGHT, 16, topHint, font_small, MUTED, Align::Right);
         c.hline(0, HEADER_LINE, UI_WIDTH, LINE);
     }
 
